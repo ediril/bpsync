@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from wpsync.markup.dom import canonical, parse_html
-from wpsync.wordpress.autop import autop
-from wpsync.wordpress.content import (
+from bpsync.markup.dom import canonical, parse_html
+from bpsync.wordpress.autop import autop
+from bpsync.wordpress.content import (
     EDITOR_CLASSES,
     MediaImage,
     render_html,

@@ -9,15 +9,15 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
-from wpsync.documents import (
+from bpsync.documents import (
     FIELDS,
     POSTS_DIR,
     LocalDocument,
     body_checksum,
     fields_checksum,
 )
-from wpsync.posts import ContentFormat, Post, PostSummary, RemoteState
-from wpsync.state import PostRecord
+from bpsync.posts import ContentFormat, Post, PostSummary, RemoteState
+from bpsync.state import PostRecord
 
 
 class SelectionError(ValueError):

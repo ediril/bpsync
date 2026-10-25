@@ -1,6 +1,6 @@
 """Local post files: Markdown with YAML frontmatter.
 
-WPSync owns the synchronized fields and rewrites them canonically. Any other
+BPSync owns the synchronized fields and rewrites them canonically. Any other
 frontmatter entry is kept byte for byte, including its comments, and is never
 sent to the blog.
 """
@@ -17,8 +17,8 @@ from pathlib import Path
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
-from wpsync.posts import Post, PostStatus
-from wpsync.storage import write_text_atomic
+from bpsync.posts import Post, PostStatus
+from bpsync.storage import write_text_atomic
 
 POSTS_DIR = "posts"
 FENCE = "---"
@@ -27,7 +27,7 @@ EXAMPLE_HEADER = "---\ntitle: My post\nstatus: draft\n---"
 
 
 class DocumentError(ValueError):
-    """Raised when a post file cannot be read as a WPSync document."""
+    """Raised when a post file cannot be read as a BPSync document."""
 
 
 @dataclass(frozen=True)

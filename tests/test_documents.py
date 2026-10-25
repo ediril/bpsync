@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from wpsync.documents import (
+from bpsync.documents import (
     Document,
     DocumentError,
     parse_document,
@@ -10,7 +10,7 @@ from wpsync.documents import (
     serialize_document,
     write_document,
 )
-from wpsync.posts import Post, PostStatus
+from bpsync.posts import Post, PostStatus
 
 
 def test_synced_fields_survive_a_round_trip_with_yaml_lookalike_values():

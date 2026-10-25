@@ -8,9 +8,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from wpsync.posts import ContentFormat
+from bpsync.posts import ContentFormat
 
-STATE_PATH = Path(".wpsync") / "state.db"
+STATE_PATH = Path(".bpsync") / "state.db"
 SCHEMA_VERSION = 1
 SCHEMA = """
 CREATE TABLE site (
@@ -46,7 +46,7 @@ class PostRecord:
 def _check_site(connection: sqlite3.Connection, path: Path, api_root: str) -> None:
     version = connection.execute("PRAGMA user_version").fetchone()[0]
     if version != SCHEMA_VERSION:
-        raise StateError(f"{path} is not a version {SCHEMA_VERSION} wpsync database")
+        raise StateError(f"{path} is not a version {SCHEMA_VERSION} bpsync database")
     row = connection.execute("SELECT api_root FROM site").fetchone()
     if row is None or row[0] != api_root:
         recorded = row[0] if row else "no blog"

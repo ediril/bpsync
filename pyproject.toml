@@ -3,7 +3,7 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "wpsync"
+name = "bpsync"
 dynamic = ["version"]
 description = "Manage WordPress posts as local Markdown files"
 readme = "README.md"
@@ -24,7 +24,7 @@ classifiers = [
 ]
 
 [project.scripts]
-wpsync = "wpsync.cli:main"
+bpsync = "bpsync.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.12,<1"]
@@ -35,10 +35,10 @@ path = "build_backend/versioning.py"
 expression = "release_version()"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/wpsync"]
+packages = ["src/bpsync"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/wpsync", "build_backend", "version.json", "README.md", "LICENSE"]
+include = ["src/bpsync", "build_backend", "version.json", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

@@ -10,8 +10,8 @@ from typing import Any
 
 import httpx
 
-from wpsync import __version__
-from wpsync.posts import ContentFormat, PostStatus, PostSummary, RemoteState
+from bpsync import __version__
+from bpsync.posts import ContentFormat, PostStatus, PostSummary, RemoteState
 
 API_LINK_RELATION = "https://api.w.org/"
 TIMEOUT = httpx.Timeout(30.0)
@@ -24,7 +24,7 @@ STATUSES = {
     "pending": PostStatus.PENDING,
     "private": PostStatus.PRIVATE,
 }
-HEADERS = {"User-Agent": f"wpsync/{__version__}"}
+HEADERS = {"User-Agent": f"bpsync/{__version__}"}
 
 
 class WordPressError(Exception):
@@ -87,7 +87,7 @@ def _error_message(response: httpx.Response) -> str:
 
 
 def fingerprint(post: dict[str, Any]) -> str:
-    """A checksum of the stored fields WPSync synchronizes."""
+    """A checksum of the stored fields BPSync synchronizes."""
     fields = {
         "title": post["title"]["raw"],
         "content": post["content"]["raw"],

@@ -5,15 +5,15 @@ import io
 
 import httpx
 
-from wpsync.cli import run
-from wpsync.config import Profile
+from bpsync.cli import run
+from bpsync.config import Profile
 
 SITE = "https://blog.test"
 PASSWORD = "abcd efgh ijkl mnop"
 
 
 class FakeWordPress:
-    """Serves the REST API responses wpsync reads, as WordPress shapes them."""
+    """Serves the REST API responses bpsync reads, as WordPress shapes them."""
 
     def __init__(self, post_count=3, rest_route=False, can_edit=True):
         self.rest_route = rest_route

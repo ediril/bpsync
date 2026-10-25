@@ -47,7 +47,7 @@ def test_versions_advance_by_work_day_and_count_each_days_commits(tmp_path):
 
 def test_a_source_archive_keeps_its_built_version_without_git(tmp_path):
     (tmp_path / "PKG-INFO").write_text(
-        "Metadata-Version: 2.4\nName: wpsync\nVersion: 0.4.2\n"
+        "Metadata-Version: 2.4\nName: bpsync\nVersion: 0.4.2\n"
     )
 
     assert versioning.release_version(tmp_path) == "0.4.2"

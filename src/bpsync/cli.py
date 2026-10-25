@@ -10,8 +10,8 @@ from typing import TextIO
 
 import httpx
 
-from wpsync import __version__
-from wpsync.config import (
+from bpsync import __version__
+from bpsync.config import (
     Configuration,
     ConfigurationError,
     ConfigurationStore,
@@ -21,11 +21,11 @@ from wpsync.config import (
     validate_environment_name,
     validate_profile_name,
 )
-from wpsync.documents import DocumentError, scan_documents
-from wpsync.posts import PostStatus, PostSummary, RemoteState
-from wpsync.state import StateError, read_records
-from wpsync.sync import Action, SelectionError, compare, select
-from wpsync.wordpress.client import WordPressClient, WordPressError, discover_api_root
+from bpsync.documents import DocumentError, scan_documents
+from bpsync.posts import PostStatus, PostSummary, RemoteState
+from bpsync.state import StateError, read_records
+from bpsync.sync import Action, SelectionError, compare, select
+from bpsync.wordpress.client import WordPressClient, WordPressError, discover_api_root
 
 COMMANDS = (
     "create",
@@ -154,7 +154,7 @@ def _profile_argument(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="wpsync",
+        prog="bpsync",
         description=(
             "Manage WordPress posts as local Markdown files. Run commands inside "
             "a mapped profile folder, or prefix a command with a profile name. "
@@ -193,14 +193,14 @@ def build_parser() -> argparse.ArgumentParser:
     connect = subparsers.add_parser(
         "connect",
         help="verify a profile's credentials and list the blog's posts",
-        usage="wpsync connect [PROFILE]\n       wpsync PROFILE connect",
+        usage="bpsync connect [PROFILE]\n       bpsync PROFILE connect",
     )
     _profile_argument(connect)
 
     map_parser = subparsers.add_parser(
         "map",
         help="move a profile's local folder",
-        usage="wpsync map [PROFILE] [--local-root PATH]\n       wpsync PROFILE map",
+        usage="bpsync map [PROFILE] [--local-root PATH]\n       bpsync PROFILE map",
         description=(
             "Point a profile at a different local folder after a [y/N] "
             "confirmation. A different blog needs its own profile."
@@ -216,7 +216,7 @@ def build_parser() -> argparse.ArgumentParser:
     remove = subparsers.add_parser(
         "remove",
         help="remove a profile",
-        usage="wpsync remove [PROFILE]\n       wpsync PROFILE remove",
+        usage="bpsync remove [PROFILE]\n       bpsync PROFILE remove",
         description="Remove the profile only; local files and the blog stay unchanged.",
     )
     _profile_argument(remove)
@@ -224,9 +224,9 @@ def build_parser() -> argparse.ArgumentParser:
     root = subparsers.add_parser(
         "root",
         help="print a profile's local folder",
-        usage="wpsync root [PROFILE]\n       wpsync PROFILE root",
+        usage="bpsync root [PROFILE]\n       bpsync PROFILE root",
         description=(
-            'Print only the local folder, suitable for cd "$(wpsync root PROFILE)".'
+            'Print only the local folder, suitable for cd "$(bpsync root PROFILE)".'
         ),
     )
     _profile_argument(root)
@@ -235,8 +235,8 @@ def build_parser() -> argparse.ArgumentParser:
         "profile",
         help="show the current or named profile",
         usage=(
-            "wpsync profile [PROFILE] [--details]\n"
-            "       wpsync PROFILE profile [--details]"
+            "bpsync profile [PROFILE] [--details]\n"
+            "       bpsync PROFILE profile [--details]"
         ),
     )
     _profile_argument(profile)
@@ -255,14 +255,14 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "ls",
         help="list local posts with their IDs and slugs",
-        usage="wpsync ls\n       wpsync PROFILE ls",
+        usage="bpsync ls\n       bpsync PROFILE ls",
         description="List the post files in this profile without contacting the blog.",
     )
 
     diff = subparsers.add_parser(
         "diff",
         help="show what push would change",
-        usage="wpsync diff [POST] [-a]\n       wpsync PROFILE diff [POST] [-a]",
+        usage="bpsync diff [POST] [-a]\n       bpsync PROFILE diff [POST] [-a]",
         description=(
             "Show local changes and anything that would stop a push. Contacts the "
             "blog only for changed or new posts. POST is a post ID, slug, or file."
@@ -292,7 +292,7 @@ def _resolve_profile(
         if active is None:
             raise ConfigurationError(
                 "current directory is not inside a mapped profile; prefix the "
-                "command with a profile (wpsync PROFILE COMMAND)"
+                "command with a profile (bpsync PROFILE COMMAND)"
             )
         return active
     name = validate_profile_name(name)
@@ -439,7 +439,7 @@ def _profile(arguments: argparse.Namespace, session: _Session) -> str:
     if arguments.profile_prefix is None and arguments.profile_name is None:
         active = configuration.profile_for_path(Path.cwd().resolve())
         if active is None:
-            return "No active profile. Use wpsync PROFILE COMMAND."
+            return "No active profile. Use bpsync PROFILE COMMAND."
         name, profile = active
     else:
         name, profile = _resolve_profile(arguments, configuration)
@@ -533,7 +533,7 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
     profile, _ = _profile_root(arguments, session)
     documents = scan_documents(profile.local_root)
     if not documents:
-        return "No posts. Run wpsync pull, or add Markdown files under posts/."
+        return "No posts. Run bpsync pull, or add Markdown files under posts/."
 
     def order(item):  # noqa: ANN001, ANN202
         post_id = item.document.post_id
@@ -643,7 +643,7 @@ def run(
         StateError,
         WordPressError,
     ) as error:
-        print(f"wpsync: error: {error}", file=stderr)
+        print(f"bpsync: error: {error}", file=stderr)
         return 1
     print(message, file=stdout)
     return 0

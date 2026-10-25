@@ -2,10 +2,10 @@ from pathlib import Path, PurePosixPath
 
 from wordpress_fake import SITE, FakeWordPress, add_profile, invoke
 
-from wpsync.documents import Document, body_checksum, fields_checksum, write_document
-from wpsync.posts import ContentFormat, Post
-from wpsync.state import PostRecord, write_state
-from wpsync.wordpress.client import fingerprint
+from bpsync.documents import Document, body_checksum, fields_checksum, write_document
+from bpsync.posts import ContentFormat, Post
+from bpsync.state import PostRecord, write_state
+from bpsync.wordpress.client import fingerprint
 
 API_ROOT = f"{SITE}/wp-json/"
 

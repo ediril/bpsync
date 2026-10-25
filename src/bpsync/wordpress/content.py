@@ -9,7 +9,7 @@ from typing import Protocol
 
 from markdown_it.token import Token
 
-from wpsync.markup.dom import (
+from bpsync.markup.dom import (
     Comment,
     Element,
     Node,
@@ -18,14 +18,14 @@ from wpsync.markup.dom import (
     to_html,
     trim_block_whitespace,
 )
-from wpsync.markup.markdown import (
+from bpsync.markup.markdown import (
     Converter,
     Unconvertible,
     raw_block,
     render,
     render_inline,
 )
-from wpsync.wordpress.autop import autop
+from bpsync.wordpress.autop import autop
 
 EDITOR_CLASSES = frozenset(
     {

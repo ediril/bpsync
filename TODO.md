@@ -1,7 +1,7 @@
 # Work Queue
 
 - [ ] Profiles: `create`, `profiles`, `profile`, `map`, `remove`, `root`, and
-  `connect`, stored in `~/.wpsync/config.json` with HLSync's root rules,
+  `connect`, stored in `~/.bpsync/config.json` with HLSync's root rules,
   current-directory inference, profile-prefix override, and environment-variable
   credentials. Includes the WordPress client foundation: REST API discovery,
   Application Password authentication, paginated requests, error reporting, and
@@ -13,7 +13,7 @@
   to Markdown for pull through a converter that mirrors the renderer, a
   `wpautop` port for classic content, and a per-element display-identity check
   that keeps unconvertible elements as HTML and reports them.
-- [x] Sync state, `diff`, and `ls`: `.wpsync/state.db` with per-file body and
+- [x] Sync state, `diff`, and `ls`: `.bpsync/state.db` with per-file body and
   header checksums, WordPress fingerprints, and the blog identity; `diff [POST]`
   in HLSync notation, fetching only locally changed posts and matching new
   files by title and slug; `ls` listing local posts by ID, slug, and title.

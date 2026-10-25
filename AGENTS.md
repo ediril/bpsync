@@ -1,5 +1,5 @@
 ## Project Memory
-- This file is the persistent memory for agents working on WPSync. Record
+- This file is the persistent memory for agents working on BPSync. Record
   durable facts, preferences, and corrections here. Do not use the
   `~/.claude/projects/.../memory/` store or any other agent-private memory for
   this project.
@@ -7,17 +7,21 @@
   compaction before continuing work.
 
 ## Project Context
-- WPSync is a local-first CLI that manages WordPress posts as Markdown files.
-  `plans/mvp.md` defines the MVP; `TODO.md` is the ordered work queue.
+- BPSync (Blog Post Sync) is a local-first CLI that manages blog posts as
+  Markdown files, starting with WordPress. `plans/mvp.md` defines the MVP;
+  `TODO.md` is the ordered work queue.
+- The PyPI distribution, command, and Python package are all `bpsync`. The
+  project was first called WPSync; `wpsync` on PyPI belongs to an unrelated
+  project.
 - WordPress is the only MVP platform, but other blogging platforms are likely
   later. Keep platform-specific code (REST API, HTML conventions) inside
-  `src/wpsync/wordpress/`; the sync engine, local document format, and project
+  `src/bpsync/wordpress/`; the sync engine, local document format, and project
   state must stay platform-neutral.
-- WPSync shares UX philosophy and CLI conventions (profiles, current-directory
-  inference, environment-variable credentials) with HLSync (`../../hlsync`) but
+- BPSync shares UX philosophy and CLI conventions (profiles, current-directory
+  inference, environment-variable credentials) with HLSync (`../hlsync`) but
   no code or dependencies. Check HLSync's README before designing a command.
 - Python 3.11+, packaged with uv; tests run with `uv run pytest`.
-- WPSync is licensed under PolyForm Strict 1.0.0 (noncommercial use only; no
+- BPSync is licensed under PolyForm Strict 1.0.0 (noncommercial use only; no
   modification or redistribution; paid commercial licenses). Dependencies must
   be permissively licensed (MIT, BSD, Apache); never copy or port GPL code such
   as WordPress's. Reimplement needed WordPress behavior and check it against

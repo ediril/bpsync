@@ -1,6 +1,6 @@
 import pytest
 
-from wpsync.config import ConfigurationStore
+from bpsync.config import ConfigurationStore
 
 
 @pytest.fixture

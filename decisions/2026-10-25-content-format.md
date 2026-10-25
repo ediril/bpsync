@@ -27,7 +27,7 @@ and inline styles). Inline HTML remains valid Markdown and is the last resort.
 ### Push
 
 Push renders the Markdown to plain HTML and sends it as classic (non-block) post
-content. WPSync does not generate Gutenberg block markup. The rendered HTML
+content. BPSync does not generate Gutenberg block markup. The rendered HTML
 places line breaks only inside `<pre>`, so WordPress's `wpautop` display filter
 cannot add paragraphs or breaks.
 
@@ -37,7 +37,7 @@ markup (`<figure class="wp-block-image size-large">` with `wp-image-ID`), using
 the media ID and size recorded in the media table; an image title becomes its
 caption. The local Markdown keeps the local path. Images with remote URLs are
 sent as plain `<img>` elements. An embeddable URL alone in a paragraph is sent
-as that bare URL, so WordPress's oEmbed support renders the player; WPSync does
+as that bare URL, so WordPress's oEmbed support renders the player; BPSync does
 not generate iframes for embeds.
 
 ### Pull
@@ -47,12 +47,12 @@ has the comments of static blocks removed; a dynamic block, or any block outside
 the known static set, stays as its block markup so WordPress keeps rendering it.
 Classic content, which WordPress stores without paragraph tags, is first
 expanded the way WordPress's `wpautop` display filter expands it, so the
-converted Markdown means what WordPress displays. WPSync implements that
+converted Markdown means what WordPress displays. BPSync implements that
 behavior independently, because WordPress's code is GPL and cannot be
-incorporated under WPSync's license, and checks it against WordPress's own
+incorporated under BPSync's license, and checks it against WordPress's own
 output (`tests/fixtures/wpautop.json`).
 
-A WPSync converter written as the inverse of the push renderer turns the HTML
+A BPSync converter written as the inverse of the push renderer turns the HTML
 into Markdown. Each top-level element is then rendered back with the push
 renderer and compared with the original. The comparison is display identity:
 the same elements, attributes, and text, ignoring whitespace outside `<pre>`,
@@ -78,8 +78,8 @@ ask again. `diff` shows the format change before it happens.
 Plain HTML is what WordPress has always accepted through the API, and it has no
 validity requirement. Gutenberg markup must match each block's own save output
 exactly, or the editor reports the block as invalid. That output changes between
-WordPress releases, so generating it would tie WPSync to editor internals for
-little gain. The cost is that posts WPSync writes open in the block editor as a
+WordPress releases, so generating it would tie BPSync to editor internals for
+little gain. The cost is that posts BPSync writes open in the block editor as a
 single Classic block. Only posts the user edits locally are pushed, so untouched
 block posts keep their format.
 
