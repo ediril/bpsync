@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wpsync"
+dynamic = ["version"]
+description = "Manage WordPress posts as local Markdown files"
+readme = "README.md"
+license = "LicenseRef-PolyForm-Strict-1.0.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.28,<1",
+  "markdown-it-py>=3,<5",
+  "mdit-py-plugins>=0.5,<1",
+  "PyYAML>=6,<7",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+wpsync = "wpsync.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.12,<1"]
+
+[tool.hatch.version]
+source = "code"
+path = "build_backend/versioning.py"
+expression = "release_version()"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wpsync"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/wpsync", "build_backend", "version.json", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+pythonpath = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
