@@ -157,14 +157,24 @@ appear only through `pull`.
 
 ## License
 
-WPSync is free for personal and other noncommercial use under the
-[PolyForm Strict License 1.0.0](LICENSE), including use by the noncommercial
-organizations that license lists. The license does not permit modifying
-WPSync, distributing it, or making new works based on it.
+WPSync is source-available under the [PolyForm Strict License 1.0.0](LICENSE).
+Use is free of charge for the purposes permitted by that license, including:
 
-Commercial use requires a separate paid license. Contact
-[Emrah Diril](mailto:emrah@diril.org) for pricing and a commercial agreement
-before beginning such use.
+- Any noncommercial purpose.
+- The personal uses listed in the license, such as personal study and hobby
+  projects, without any anticipated commercial application.
+- Use by charitable organizations, educational institutions, public research
+  organizations, public safety or health organizations, environmental protection
+  organizations, and government institutions, regardless of funding source or
+  obligations resulting from funding.
+
+This license grants no rights to modify or redistribute WPSync or create works
+based on it. The full license governs; this summary does not grant additional
+permissions.
+
+Commercial use outside those permissions requires a separate paid license.
+Contact [Emrah Diril](mailto:emrah@diril.org) for pricing and a commercial
+agreement before beginning such use.
 
 WPSync is source-available, not open source.
 
