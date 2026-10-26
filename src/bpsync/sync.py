@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Protocol
+from typing import Generic, Protocol, TypeVar
 
 from bpsync.documents import (
     FIELDS,
@@ -18,6 +18,8 @@ from bpsync.documents import (
 )
 from bpsync.posts import ContentFormat, Post, PostSummary, RemoteState
 from bpsync.state import PostRecord
+
+C = TypeVar("C", bound="Candidate")
 
 
 class SelectionError(ValueError):
@@ -74,29 +76,40 @@ def select(
     return Selection(chosen, record)
 
 
+class Candidate(Protocol):
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def title(self) -> str: ...
+
+    @property
+    def slug(self) -> str: ...
+
+
 @dataclass(frozen=True)
-class Match:
-    """How a new local post relates to existing remote posts."""
+class Match(Generic[C]):
+    """How a post relates to the posts on the other side."""
 
-    post: PostSummary | None
+    post: C | None
     reason: str = ""
-    candidates: tuple[PostSummary, ...] = ()
+    candidates: tuple[C, ...] = ()
 
 
-def match_post(post: Post, summaries: Sequence[PostSummary]) -> Match:
-    by_slug = [s for s in summaries if post.slug and s.slug == post.slug]
+def match_post(post: Post, candidates: Sequence[C]) -> Match[C]:
+    """Match by slug and title, never choosing among several candidates."""
+    by_slug = [c for c in candidates if post.slug and c.slug == post.slug]
     title = post.title.strip()
-    by_title = [s for s in summaries if title and s.title.strip() == title]
-    candidates = {s.id: s for s in by_slug + by_title}
-    if not candidates:
+    by_title = [c for c in candidates if title and c.title.strip() == title]
+    found = {c.id: c for c in by_slug + by_title}
+    if not found:
         return Match(None)
-    if len(candidates) > 1:
-        return Match(None, candidates=tuple(candidates.values()))
-    found = next(iter(candidates.values()))
+    if len(found) > 1:
+        return Match(None, candidates=tuple(found.values()))
     reasons = [
         name for name, group in (("title", by_title), ("slug", by_slug)) if group
     ]
-    return Match(found, "same " + " and ".join(reasons))
+    return Match(next(iter(found.values())), "same " + " and ".join(reasons))
 
 
 class Action(StrEnum):

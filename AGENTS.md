@@ -94,10 +94,12 @@
 - Eliminate code duplication through component extraction and parameterization
 
 ## Documentation Conventions
-- Use `TODO.md` as the live ordered work queue. The first unchecked item is
-  the next task. When an item is finished, mark it complete but do not remove
-  it; the user owns clearing completed items. Update it when a new next step is
-  inserted or when the direction changes enough that the queue needs rethinking.
+- Use `TODO.md` as the live ordered work queue. The first item is the next
+  task. When an item is finished, move it to `CHANGELOG.md` under
+  `## Unreleased`, rewritten as a user-facing change in HLSync's format
+  (`### Added`, `### Changed`, `### Fixed`). Update `TODO.md` when a new next
+  step is inserted or when the direction changes enough that the queue needs
+  rethinking.
 - Reserve `decisions/` for substantial architectural decisions and their
   current rationale: model boundaries, safety guarantees, dependencies, or
   consequential tradeoffs. Do not create or update decision files for version

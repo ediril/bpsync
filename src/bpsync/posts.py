@@ -48,3 +48,29 @@ class RemoteState:
 
     fingerprint: str
     format: ContentFormat
+
+
+@dataclass(frozen=True)
+class FetchedPost:
+    """A post as the platform stores it, before its content is converted."""
+
+    id: str
+    post: Post
+    """Every field except the body, which conversion produces."""
+    content: str
+    state: RemoteState
+    name: str
+    """The file name stem the post prefers, usually its slug."""
+
+
+@dataclass(frozen=True)
+class Conversion:
+    """A post body converted to Markdown."""
+
+    markdown: str
+    kept: tuple[str, ...]
+    """Descriptions of elements kept as the platform's markup."""
+
+
+class UnrepresentableContent(ValueError):
+    """Content whose display cannot be reproduced, even keeping it as source."""

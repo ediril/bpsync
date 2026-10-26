@@ -111,14 +111,62 @@ Left column.
 ```
 
 A video or other embeddable URL alone in a paragraph is embedded by WordPress.
-Content with no Markdown form, such as galleries, stays in the file as HTML;
-BPSync never drops it.
+Content with no Markdown form, such as galleries, stays in the file as its
+exact original HTML; BPSync never drops it. When plain HTML would not survive
+Markdown unchanged, it is wrapped in a raw HTML fence, which is published
+exactly as written:
+
+````markdown
+```{=html}
+<!-- wp:gallery -->
+<figure class="wp-block-gallery">…</figure>
+<!-- /wp:gallery -->
+```
+````
 
 Other header entries, such as `layout:` from another tool, stay in the file
 exactly as written and are never sent to WordPress. When BPSync rewrites a file,
 it writes its own fields in the order above, sorts category and tag names, and
 leaves other entries and their comments unchanged. Two files with the same `id`
 are an error.
+
+## Pulling posts
+
+`pull` brings the blog's posts into the profile folder: each post becomes
+`posts/<slug>.md`, and images from the site's media library are downloaded into
+`images/` and referenced from the Markdown. The copy of an image that the post
+displays is downloaded, usually WordPress's resized `large` copy.
+
+```console
+bpsync pull          # every post
+bpsync pull 123      # one post, by ID
+bpsync pull hello    # one post, by slug, including one not pulled yet
+bpsync pull -y       # answer yes to every question
+```
+
+```text
++ r  123  posts/hello-world.md  2 images
+~ r  145  posts/release-notes.md
+?    150  posts/about.md  changed on both sides; your file is unchanged
++ r  160  posts/gallery-tour.md  kept as HTML: core/gallery
+Pulled 3 posts (2 new, 1 updated), 2 images; 1 skipped. Rerun with --yes to accept the skipped changes.
+```
+
+Pull never loses local work:
+
+- A file you edited is replaced only after you confirm, and only when the post
+  also changed on WordPress. Without a terminal, or when you answer no, the
+  file is skipped.
+- A WordPress post whose title or slug matches a local file that has no `id`
+  yet is linked to that file only after you confirm, so pull does not create
+  a duplicate.
+- A file you deleted is not restored, and a post deleted on WordPress keeps its
+  local file.
+- Header entries BPSync does not sync, such as `layout:`, are kept when a file
+  is updated.
+
+Dates are written in the blog's time zone. Images placed inside a line of text,
+rather than on their own, keep their WordPress address and are not downloaded.
 
 ## Seeing what changed
 
@@ -180,6 +228,9 @@ agreement before beginning such use.
 BPSync is source-available, not open source.
 
 ## Development
+
+See [`TODO.md`](TODO.md) for the ordered work queue and
+[`CHANGELOG.md`](CHANGELOG.md) for completed changes.
 
 ```console
 uv sync

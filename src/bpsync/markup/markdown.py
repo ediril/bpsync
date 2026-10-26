@@ -2,17 +2,21 @@
 
 The dialect is CommonMark with pipe tables, Pandoc-style attributes
 (`[text]{.class}`, `{key=value}` after links and images, `{.class}` before a
-block) and fenced divs (`::: {.class}`). The converter is the inverse of the
-renderer: it writes only constructs the renderer reads back to the same tree,
-and raises `Unconvertible` for anything else.
+block), fenced divs (`::: {.class}`), and Pandoc raw HTML fences
+(```` ```{=html} ````), whose content is published exactly as written. The
+converter is the inverse of the renderer: it writes only constructs the
+renderer reads back to the same tree, and raises `Unconvertible` for anything
+else.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 from markdown_it import MarkdownIt
+from markdown_it.common.html_blocks import block_names
 from markdown_it.token import Token
 from mdit_py_plugins.attrs import attrs_block_plugin, attrs_plugin
 from mdit_py_plugins.attrs.parse import parse as parse_attrs
@@ -43,6 +47,9 @@ def _render_div(self, tokens, index, options, env) -> str:  # noqa: ANN001
     return start_tag(Element("div", dict(attrs))) + "\n"
 
 
+RAW_FENCE_INFO = "{=html}"
+
+
 def _parser() -> MarkdownIt:
     parser = (
         MarkdownIt("commonmark", {"html": True})
@@ -54,6 +61,15 @@ def _parser() -> MarkdownIt:
     parser.normalizeLink = lambda url: url  # type: ignore[method-assign]
     parser.normalizeLinkText = lambda text: text  # type: ignore[method-assign]
     parser.add_render_rule("softbreak", lambda *_: " ")
+    fence = parser.renderer.rules["fence"]
+
+    def render_fence(self, tokens, index, options, env) -> str:  # noqa: ANN001
+        token = tokens[index]
+        if token.info.strip() == RAW_FENCE_INFO:
+            return token.content
+        return fence(tokens, index, options, env)
+
+    parser.add_render_rule("fence", render_fence)
     return parser
 
 
@@ -63,12 +79,63 @@ PARSER = _parser()
 TokenTransform = Callable[[list[Token]], list[Token]]
 
 
-def render(markdown: str, transform: TokenTransform | None = None) -> list[Node]:
-    """Render Markdown, letting a platform rewrite the parsed tokens first."""
-    tokens = PARSER.parse(markdown)
-    if transform is not None:
-        tokens = transform(tokens)
+@dataclass(frozen=True)
+class Piece:
+    """One top-level block of a document."""
+
+    tokens: list[Token]
+    raw: str | None = None
+    """The exact HTML of a raw block, published without rendering."""
+
+
+def pieces(markdown: str) -> list[Piece]:
+    """Split a document into top-level blocks, keeping raw HTML separate."""
+    result: list[Piece] = []
+    current: list[Token] = []
+    depth = 0
+    for token in PARSER.parse(markdown):
+        raw_fence = token.type == "fence" and token.info.strip() == RAW_FENCE_INFO
+        if depth == 0 and (token.type == "html_block" or raw_fence):
+            result.append(Piece([token], token.content.removesuffix("\n")))
+            continue
+        current.append(token)
+        depth += token.nesting
+        if depth == 0:
+            result.append(Piece(current))
+            current = []
+    return result
+
+
+def render_tokens(tokens: list[Token]) -> list[Node]:
     return parse_html(PARSER.renderer.render(tokens, PARSER.options, {}))
+
+
+def kept_markdown(source: str) -> str:
+    """Markdown that publishes HTML source exactly as written.
+
+    Plain HTML is used when Markdown reads it back unchanged; otherwise the
+    source goes into a raw HTML fence.
+    """
+    tokens = PARSER.parse(source)
+    if (
+        len(tokens) == 1
+        and tokens[0].type == "html_block"
+        and tokens[0].content.removesuffix("\n") == source
+    ):
+        return source
+    longest = max((len(run) for run in re.findall(r"`+", source)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}{RAW_FENCE_INFO}\n{source}\n{fence}"
+
+
+def image_sources(markdown: str) -> set[str]:
+    """The sources of the images a document shows through Markdown syntax."""
+    sources = set()
+    for token in PARSER.parse(markdown):
+        for child in token.children or []:
+            if child.type == "image":
+                sources.add(str(child.attrs["src"]))
+    return sources
 
 
 def render_inline(token: Token) -> list[Node]:
@@ -82,15 +149,7 @@ LOOSE_UNDERSCORE = re.compile(r"(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])")
 ENTITY_LIKE = re.compile(r"&(?=#?[A-Za-z0-9]+;)")
 LINE_START = re.compile(r"^(?:([#>+=|-])|(\d+)([.)]))", re.M)
 TYPE_ONE_TAGS = frozenset({"pre", "script", "style", "textarea"})
-TYPE_SIX_TAGS = BLOCK_TAGS - {
-    "audio",
-    "canvas",
-    "embed",
-    "object",
-    "picture",
-    "svg",
-    "video",
-}
+TYPE_SIX_TAGS = frozenset(block_names)
 
 
 def _escape(text: str) -> str:
@@ -108,7 +167,9 @@ def _escape_line_starts(markdown: str) -> str:
 
 def _attribute_list(attrs: dict[str, str]) -> str:
     parts = []
-    for name, value in attrs.items():
+    # Pandoc's convention puts the id and classes before other attributes.
+    ordered = sorted(attrs.items(), key=lambda item: item[0] not in ("id", "class"))
+    for name, value in ordered:
         if name == "class":
             parts.extend(f".{cls}" for cls in value.split())
         elif name == "id" and re.fullmatch(r"[A-Za-z][\w-]*", value):
@@ -201,7 +262,9 @@ class Converter:
     # Blocks --------------------------------------------------------------
 
     def block(self, node: Node) -> str:
-        if isinstance(node, str) or isinstance(node, Comment):
+        if isinstance(node, Comment):
+            return raw_block(node)
+        if isinstance(node, str):
             raise Unconvertible("text outside a block")
         attrs = self.attrs(node)
         tag = node.tag
@@ -244,7 +307,7 @@ class Converter:
         ]
         if not children:
             raise Unconvertible("empty container")
-        return "\n\n".join(self.block_or_raw(child) for child in children)
+        return join_blocks([self.block_or_raw(child) for child in children])
 
     def block_or_raw(self, node: Node) -> str:
         try:
@@ -386,23 +449,44 @@ class Converter:
         return "| " + " | ".join(texts) + " |"
 
 
+def join_blocks(blocks: list[str]) -> str:
+    """Join Markdown blocks so adjacent lists stay separate lists.
+
+    Markdown merges consecutive lists unless their markers differ, so a list
+    that follows another list switches marker style.
+    """
+    blocks = list(blocks)
+    for index in range(1, len(blocks)):
+        previous, current = blocks[index - 1], blocks[index]
+        if previous.startswith("- ") and current.startswith("- "):
+            blocks[index] = re.sub(r"^- ", "* ", current, flags=re.M)
+        elif re.match(r"\d+\. ", previous) and re.match(r"\d+\. ", current):
+            blocks[index] = re.sub(r"^(\d+)\. ", r"\1) ", current, flags=re.M)
+    return "\n\n".join(blocks)
+
+
 def raw_block(node: Node) -> str:
-    """Markdown that carries a node through unchanged as an HTML block.
+    """Markdown that carries a nested node as an HTML block.
 
     Bare text cannot start an HTML block, so it is prefixed with an empty
-    comment, which starts a block that ends on that line.
+    comment, which starts a block that ends on that line. Content with a blank
+    line would end the block early, so it is unconvertible.
     """
     if isinstance(node, Comment):
-        return f"<!--{node.text.replace(chr(10), ' ')}-->"
-    html = serialize([node]).replace("\n", "&#10;")
-    if not isinstance(node, Element):
-        return f"<!---->{html}"
-    if node.tag in TYPE_ONE_TAGS | TYPE_SIX_TAGS or node.tag in VOID_TAGS:
-        return html
-    # A line holding only an opening tag starts an HTML block that runs to the
-    # next blank line; the newline after it is not displayed.
-    opening = start_tag(node)
-    return f"{opening}\n{html[len(opening) :]}"
+        html = f"<!--{node.text}-->"
+    else:
+        html = serialize([node])
+        if isinstance(node, str):
+            html = f"<!---->{html}"
+        elif node.tag not in TYPE_ONE_TAGS | TYPE_SIX_TAGS | VOID_TAGS:
+            # A line holding only an opening tag starts an HTML block that runs
+            # to the next blank line.
+            opening = start_tag(node)
+            html = f"{opening}\n{html[len(opening) :]}"
+    ends_at_close = isinstance(node, Element) and node.tag in TYPE_ONE_TAGS
+    if not ends_at_close and re.search(r"\n[ \t]*\n", html):
+        raise Unconvertible("blank line in nested HTML")
+    return html
 
 
 def _with_block_attrs(attrs: dict[str, str], body: str) -> str:

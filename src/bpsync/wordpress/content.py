@@ -1,15 +1,23 @@
-"""Post content: WordPress HTML to the post Markdown dialect and back."""
+"""Post content: WordPress HTML to the post Markdown dialect and back.
+
+Conversion is checked against a model of what WordPress displays. Content
+with block markup is displayed block by block; content without it goes
+through WordPress's `wpautop` filter. The stored post and the post a push
+would send are both put through that model, and any part of the post whose
+Markdown would not display the same is kept as its exact original source.
+"""
 
 from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Protocol
 
 from markdown_it.token import Token
 
 from bpsync.markup.dom import (
+    HTML_SPACE,
     Comment,
     Element,
     Node,
@@ -21,11 +29,15 @@ from bpsync.markup.dom import (
 from bpsync.markup.markdown import (
     Converter,
     Unconvertible,
-    raw_block,
-    render,
+    join_blocks,
+    kept_markdown,
+    pieces,
     render_inline,
+    render_tokens,
 )
-from bpsync.wordpress.autop import autop
+from bpsync.media import Media
+from bpsync.posts import Conversion, UnrepresentableContent
+from bpsync.wordpress.autop import BLOCK_NAMES, autop
 
 EDITOR_CLASSES = frozenset(
     {
@@ -55,32 +67,22 @@ DELIMITER = re.compile(
 )
 WP_IMAGE_CLASS = re.compile(r"wp-image-(\d+)")
 SIZE_CLASS = re.compile(r"size-([\w-]+)")
-
-
-@dataclass(frozen=True)
-class MediaImage:
-    id: str
-    url: str
-    size: str
-
-
-class Media(Protocol):
-    """The media table: how Markdown image sources map to library images."""
-
-    def remember(self, url: str, media_id: str, size: str) -> str:
-        """Record a library image found on pull; return its Markdown source."""
-        ...
-
-    def lookup(self, src: str) -> MediaImage | None:
-        """The library image a Markdown source refers to, if any."""
-        ...
-
-
-@dataclass(frozen=True)
-class Conversion:
-    markdown: str
-    kept: tuple[str, ...]
-    """Descriptions of elements kept as HTML."""
+PLACEMENT_CLASS = re.compile(r"align(?:left|right|center|wide|full|none)")
+CAPTION_CLASS = "wp-element-caption"
+EMBED_ATTRS = frozenset({"url", "type", "providerNameSlug", "responsive"})
+EMBED_CLASS = re.compile(
+    r"wp-block-embed(?:-[\w-]+)?|is-type-[\w-]+|is-provider-[\w-]+"
+    r"|wp-embed-aspect-[\w-]+|wp-has-aspect-ratio"
+)
+EMBED_URL = re.compile(r"https?://[^\s<>\"]+")
+CLASSIC_MARKUP = re.compile(
+    r"<!--.*?-->|<(script|style|pre|textarea)\b.*?</\1\s*>"
+    r"|<(/?)([a-zA-Z][\w:-]*)\b[^>]*?(/?)>|(\n[ \t]*\n)",
+    re.DOTALL | re.IGNORECASE,
+)
+VOID_NAMES = frozenset(
+    "area base br col embed hr img input link meta param source track wbr".split()
+)
 
 
 def is_block_content(raw: str) -> bool:
@@ -91,19 +93,18 @@ def is_block_content(raw: str) -> bool:
 
 
 def render_html(markdown: str, media: Media) -> str:
-    return to_html(_render(markdown, media))
-
-
-def _render(markdown: str, media: Media) -> list[Node]:
-    return render(markdown, lambda tokens: _present(tokens, media))
+    """The HTML a push sends; raw HTML from the Markdown is sent exactly."""
+    html = []
+    for piece in pieces(markdown):
+        if piece.raw is not None:
+            html.append(piece.raw)
+        else:
+            html.append(to_html(render_tokens(_present(piece.tokens, media))))
+    return "\n\n".join(html)
 
 
 def _present(tokens: list[Token], media: Media) -> list[Token]:
-    """Use WordPress's presentation for Markdown images and tables.
-
-    Only tokens from Markdown syntax change; HTML written in the Markdown passes
-    through as it is.
-    """
+    """Use WordPress's presentation for Markdown images and tables."""
     presented: list[Token] = []
     index = 0
     while index < len(tokens):
@@ -113,7 +114,7 @@ def _present(tokens: list[Token], media: Media) -> list[Token]:
             children = [
                 c
                 for c in window[1].children or []
-                if not (c.type == "text" and not c.content.strip())
+                if not (c.type == "text" and not c.content.strip(HTML_SPACE))
             ]
             if len(children) == 1 and children[0].type == "image":
                 image = render_inline(children[0])[0]
@@ -137,263 +138,428 @@ def _html_token(html: str) -> Token:
 
 
 def _image_figure(image: Element, media: Media) -> Element:
+    """WordPress's image figure: placement on the figure, the rest on the image."""
     attrs = dict(image.attrs)
     title = attrs.pop("title", None)
+    classes = attrs.pop("class", "").split()
     figure_classes = ["wp-block-image"]
+    image_classes = [c for c in classes if not PLACEMENT_CLASS.fullmatch(c)]
     library = media.lookup(attrs["src"])
     if library is not None:
         attrs["src"] = library.url
         figure_classes.append(f"size-{library.size}")
-    figure_classes.extend(attrs.pop("class", "").split())
-    if library is not None:
-        attrs["class"] = f"wp-image-{library.id}"
+        image_classes.append(f"wp-image-{library.id}")
+    figure_classes.extend(c for c in classes if PLACEMENT_CLASS.fullmatch(c))
+    if image_classes:
+        attrs["class"] = " ".join(image_classes)
     children: list[Node] = [Element("img", attrs)]
     if title:
-        children.append(Element("figcaption", {"class": "wp-element-caption"}, [title]))
+        children.append(Element("figcaption", {"class": CAPTION_CLASS}, [title]))
     return Element("figure", {"class": " ".join(figure_classes)}, children)
+
+
+# What WordPress displays ---------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _Unit:
+    """A part of the stored content that converts, or is kept, as a whole."""
+
+    source: str
+    """The exact original text."""
+    nodes: list[Node]
+    """What WordPress displays for it."""
+    label: str
+    convertible: bool
+    separator: str = ""
+    """The whitespace before it in the original."""
+
+
+def display(content: str) -> list[Node]:
+    """What WordPress displays for stored or pushed post content."""
+    if not is_block_content(content):
+        return parse_html(autop(content))
+    nodes: list[Node] = []
+    for unit in _block_units(content):
+        if unit.separator and nodes:
+            nodes.append(" ")
+        nodes.extend(unit.nodes)
+    return nodes
+
+
+def same_display(stored: str, pushed: str) -> bool:
+    """Whether WordPress displays two post contents the same."""
+    return _comparable(display(stored)) == _comparable(display(pushed))
+
+
+def _comparable(nodes: list[Node]) -> tuple:
+    return canonical(_canonical_media(nodes), EDITOR_CLASSES)
+
+
+def _displays_same(first: list[Node], second: list[Node]) -> bool:
+    return _comparable(first) == _comparable(second)
+
+
+def _blank(node: Node) -> bool:
+    return isinstance(node, str) and not node.strip(HTML_SPACE)
+
+
+def _block_units(raw: str) -> list[_Unit]:
+    try:
+        return list(_scan_blocks(raw))
+    except ValueError:
+        return [_Unit(raw, parse_html(raw), "malformed block markup", False)]
+
+
+def _scan_blocks(raw: str) -> Iterator[_Unit]:
+    depth = 0
+    start = cursor = 0
+    name = ""
+    attrs: dict = {}
+    names: set[str] = set()
+    inner_start = 0
+    for match in DELIMITER.finditer(raw):
+        block = (match["namespace"] or "core/") + match["name"]
+        if match["closer"]:
+            depth -= 1
+            if depth < 0:
+                raise ValueError(f"unexpected closing delimiter for {block}")
+            if depth == 0:
+                if block != name:
+                    raise ValueError(f"{block} closes {name}")
+                yield from _freeform(raw[cursor:start])
+                yield _block_unit(
+                    raw[start : match.end()],
+                    name,
+                    attrs,
+                    names,
+                    raw[inner_start : match.start()],
+                    raw[cursor:start],
+                )
+                cursor = match.end()
+            continue
+        if depth == 0:
+            name, start, inner_start, names = block, match.start(), match.end(), set()
+            try:
+                attrs = json.loads(match["attrs"]) if match["attrs"] else {}
+            except json.JSONDecodeError as error:
+                raise ValueError("invalid block attributes") from error
+        names.add(block)
+        if match["void"]:
+            if depth == 0:
+                yield from _freeform(raw[cursor:start])
+                yield _Unit(match.group(0), parse_html(match.group(0)), block, False)
+                cursor = match.end()
+            continue
+        depth += 1
+    if depth:
+        raise ValueError(f"unclosed block {name}")
+    yield from _freeform(raw[cursor:])
+
+
+def _freeform(text: str) -> Iterator[_Unit]:
+    source = text.strip(HTML_SPACE)
+    if source:
+        separator = text[: len(text) - len(text.lstrip(HTML_SPACE))]
+        yield _Unit(source, parse_html(source), "classic content", True, separator)
+
+
+def _block_unit(
+    markup: str, name: str, attrs: dict, names: set[str], inner: str, before: str
+) -> _Unit:
+    separator = before[len(before.rstrip(HTML_SPACE)) :]
+    if name == "core/embed" or name.startswith("core-embed/"):
+        url = _plain_embed_url(attrs, inner)
+        if url is not None:
+            embed = Element("p", {"data-bpsync-embed": url})
+            return _Unit(markup, [embed], name, True, separator)
+    if name == "core/shortcode":
+        return _Unit(markup, parse_html(autop(inner)), name, True, separator)
+    if names <= STATIC_BLOCKS:
+        nodes = parse_html(DELIMITER.sub("", inner))
+        return _Unit(markup, nodes, name, True, separator)
+    return _Unit(markup, parse_html(markup), name, False, separator)
+
+
+def _plain_embed_url(attrs: dict, inner: str) -> str | None:
+    """The URL of an embed WordPress displays from its address alone."""
+    url = attrs.get("url")
+    if not isinstance(url, str) or set(attrs) - EMBED_ATTRS:
+        return None
+    figures = [n for n in parse_html(inner) if not _blank(n)]
+    if len(figures) != 1 or not isinstance(figures[0], Element):
+        return None
+    figure = figures[0]
+    if figure.tag != "figure" or set(figure.attrs) != {"class"}:
+        return None
+    if not all(EMBED_CLASS.fullmatch(c) for c in figure.attrs["class"].split()):
+        return None
+    wrappers = [n for n in figure.children if not _blank(n)]
+    if len(wrappers) != 1 or not isinstance(wrappers[0], Element):
+        return None
+    text = wrappers[0].children
+    if len(text) != 1 or not isinstance(text[0], str) or text[0].strip() != url:
+        return None
+    return url
+
+
+def _classic_units(raw: str) -> list[_Unit]:
+    """Split classic content where `wpautop` starts a new paragraph or block.
+
+    Boundaries are blank lines and the edges of block elements, counted only
+    outside every other element.
+    """
+    cuts = [0]
+    depth = 0
+    for match in CLASSIC_MARKUP.finditer(raw):
+        if match[5] is not None:
+            if depth == 0:
+                cuts.append(match.start())
+            continue
+        name = (match[1] or match[3] or "").lower()
+        block = name in BLOCK_NAMES
+        if match[1] or (match[3] and not match[2] and not match[4]):
+            if depth == 0 and block:
+                cuts.append(match.start())
+            if match[3] and name not in VOID_NAMES:
+                depth += 1
+        if match[1] or (match[3] and match[2]):
+            if match[3]:
+                depth = max(0, depth - 1)
+            if depth == 0 and block:
+                cuts.append(match.end())
+    cuts.append(len(raw))
+    chunks = (raw[start:end] for start, end in zip(cuts, cuts[1:]))
+    units = []
+    for chunk in chunks:
+        source = chunk.strip(HTML_SPACE)
+        if source:
+            nodes = parse_html(autop(source))
+            units.append(_Unit(source, nodes, _classic_label(nodes), True))
+    return units
+
+
+def _classic_label(nodes: list[Node]) -> str:
+    elements = [n for n in nodes if isinstance(n, Element)]
+    if len(elements) == 1 and elements[0].tag == "p":
+        elements = [
+            c for c in elements[0].children if isinstance(c, Element)
+        ] or elements
+    return f"<{elements[0].tag}>" if elements else "classic text"
+
+
+# Comparable forms of WordPress presentation --------------------------------
+
+
+@dataclass(frozen=True)
+class _Image:
+    """An image as either editor presents it."""
+
+    src: str
+    alt: str | None
+    caption: str | None
+    media_id: str | None
+    size: str | None
+    placement: tuple[str, ...]
+    """Alignment classes, which may sit on the image or its figure."""
+    figure_classes: tuple[str, ...]
+    image_classes: tuple[str, ...]
+    attrs: tuple[tuple[str, str], ...]
+
+
+def _parse_image(node: Node) -> _Image | None:
+    """Read a block-editor image figure or a classic paragraph holding one image."""
+    if not isinstance(node, Element):
+        return None
+    children = [c for c in node.children if not _blank(c)]
+    caption = None
+    figure_classes: list[str] = []
+    if node.tag == "figure" and "wp-block-image" in node.attrs.get("class", "").split():
+        if set(node.attrs) != {"class"} or not children:
+            return None
+        if len(children) == 2:
+            caption = _caption_text(children[1])
+            if caption is None:
+                return None
+        elif len(children) != 1:
+            return None
+        figure_classes = [
+            c for c in node.attrs["class"].split() if c != "wp-block-image"
+        ]
+    elif not (node.tag == "p" and not node.attrs and len(children) == 1):
+        return None
+    image = children[0]
+    if not isinstance(image, Element) or image.tag != "img" or "src" not in image.attrs:
+        return None
+    attrs = dict(image.attrs)
+    src, alt = attrs.pop("src"), attrs.pop("alt", None)
+    image_classes = attrs.pop("class", "").split()
+    pooled = figure_classes + image_classes
+    ids = [m[1] for c in image_classes if (m := WP_IMAGE_CLASS.fullmatch(c))]
+    sizes = [m[1] for c in pooled if (m := SIZE_CLASS.fullmatch(c))]
+    if len(ids) > 1 or len(sizes) > 1 or len(ids) != len(sizes):
+        return None
+
+    def own(classes: list[str]) -> tuple[str, ...]:
+        return tuple(
+            c
+            for c in classes
+            if not (
+                WP_IMAGE_CLASS.fullmatch(c)
+                or SIZE_CLASS.fullmatch(c)
+                or PLACEMENT_CLASS.fullmatch(c)
+            )
+        )
+
+    return _Image(
+        src,
+        alt,
+        caption,
+        ids[0] if ids else None,
+        sizes[0] if sizes else None,
+        tuple(sorted({c for c in pooled if PLACEMENT_CLASS.fullmatch(c)})),
+        own(figure_classes),
+        own(image_classes),
+        tuple(attrs.items()),
+    )
+
+
+def _caption_text(node: Node) -> str | None:
+    """A plain figure caption's text; styled or attributed captions return None."""
+    if not isinstance(node, Element) or node.tag != "figcaption":
+        return None
+    if node.attrs and node.attrs != {"class": CAPTION_CLASS}:
+        return None
+    if not all(isinstance(child, str) for child in node.children):
+        return None
+    return "".join(node.children).strip(HTML_SPACE)  # type: ignore[arg-type]
+
+
+def _canonical_media(nodes: list[Node]) -> list[Node]:
+    """Give each displayed image, embed, and comment paragraph one comparable form.
+
+    The forms are block elements, like the figures and paragraphs they stand for.
+    """
+    result: list[Node] = []
+    for node in nodes:
+        image = _parse_image(node)
+        if image is not None:
+            node = Element(
+                "figure",
+                {
+                    "data-bpsync-image": "",
+                    "src": image.src,
+                    "alt": "" if image.alt is None else image.alt,
+                    "has-alt": str(image.alt is not None),
+                    "caption": image.caption or "",
+                    "media": f"{image.media_id}:{image.size}",
+                    "placement": " ".join(image.placement),
+                    "figure-class": " ".join(sorted(image.figure_classes)),
+                    "image-class": " ".join(sorted(image.image_classes)),
+                    **dict(image.attrs),
+                },
+            )
+        elif isinstance(node, Element) and node.tag == "p" and not node.attrs:
+            content = [c for c in node.children if not _blank(c)]
+            if len(content) == 1 and isinstance(content[0], str):
+                url = content[0].strip(HTML_SPACE)
+                if EMBED_URL.fullmatch(url):
+                    node = Element("p", {"data-bpsync-embed": url})
+            elif content and all(isinstance(c, Comment) for c in content):
+                # WordPress wraps a lone <!--more--> in an empty paragraph.
+                result.extend(content)
+                continue
+        if isinstance(node, Element) and not _is_media_form(node):
+            node = Element(node.tag, node.attrs, _canonical_media(node.children))
+        result.append(node)
+    return result
+
+
+def _is_media_form(node: Element) -> bool:
+    return "data-bpsync-image" in node.attrs or "data-bpsync-embed" in node.attrs
 
 
 # Pull ----------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class _Original:
-    nodes: list[Node]
-    label: str
-
-
 def to_markdown(raw: str, media: Media) -> Conversion:
-    originals = (
-        _block_originals(raw) if is_block_content(raw) else _classic_originals(raw)
-    )
+    """Convert stored content, keeping as exact source what would not display alike."""
+    units = _block_units(raw) if is_block_content(raw) else _classic_units(raw)
     converter = Converter(EDITOR_CLASSES)
-    fragments = [_convert(original, converter, media) for original in originals]
-    kept = {index for index, fragment in enumerate(fragments) if fragment is None}
-    for index in kept:
-        fragments[index] = _raw(originals[index])
-    _separate_adjacent_lists(fragments)  # type: ignore[arg-type]
-    expected = [_comparable(original.nodes) for original in originals]
-    while True:
-        rendered = _comparable(_render("\n\n".join(fragments), media))  # type: ignore[arg-type]
-        index = _first_difference(rendered, expected)
-        if index is None:
-            break
-        if index in kept:
-            raise AssertionError(f"kept HTML for {originals[index].label} changed")
-        kept.add(index)
-        fragments[index] = _raw(originals[index])
-    labels = tuple(
-        originals[index].label
-        for index in sorted(kept)
-        if not all(_plain_comment(node) for node in originals[index].nodes)
+    fragments = [_convert(unit, converter, media) for unit in units]
+    converted = [index for index, fragment in enumerate(fragments) if fragment]
+    expected = _comparable(display(raw))
+
+    def document(chosen: list[int]) -> str:
+        parts = [
+            fragments[index] if index in chosen else kept_markdown(unit.source)
+            for index, unit in enumerate(units)
+        ]
+        return join_blocks(parts)  # type: ignore[arg-type]
+
+    def displays_alike(chosen: list[int]) -> bool:
+        pushed = render_html(document(chosen), media)
+        return _comparable(display(pushed)) == expected
+
+    if not displays_alike(converted):
+        if not displays_alike([]):
+            raise UnrepresentableContent(
+                "the post displays differently even when kept entirely as HTML"
+            )
+        while not displays_alike(converted):
+            # Find the first conversion that breaks the document and keep it.
+            good, bad = 0, len(converted)
+            while bad - good > 1:
+                middle = (good + bad) // 2
+                if displays_alike(converted[:middle]):
+                    good = middle
+                else:
+                    bad = middle
+            converted.pop(bad - 1)
+    kept = tuple(
+        unit.label for index, unit in enumerate(units) if index not in converted
     )
-    return Conversion("\n\n".join(fragments), labels)  # type: ignore[arg-type]
+    return Conversion(document(converted), kept)
 
 
-def _plain_comment(node: Node) -> bool:
-    """A comment such as <!--more-->, whose Markdown form is the comment itself."""
-    return isinstance(node, Comment) and not node.text.lstrip().startswith("wp:")
-
-
-def _raw(original: _Original) -> str:
-    return "\n\n".join(raw_block(node) for node in original.nodes)
-
-
-def _first_difference(rendered: tuple, expected: list[tuple]) -> int | None:
-    """The index of the first original whose nodes the rendering does not match."""
-    position = 0
-    for index, nodes in enumerate(expected):
-        if rendered[position : position + len(nodes)] != nodes:
-            return index
-        position += len(nodes)
-    return None if position == len(rendered) else len(expected) - 1
-
-
-def _convert(original: _Original, converter: Converter, media: Media) -> str | None:
+def _convert(unit: _Unit, converter: Converter, media: Media) -> str | None:
+    if not unit.convertible:
+        return None
     try:
-        nodes = trim_block_whitespace(original.nodes)
+        nodes = trim_block_whitespace(unit.nodes)
         parts = [converter.block(_for_conversion(node, media)) for node in nodes]
     except Unconvertible:
         return None
-    fragment = "\n\n".join(parts)
-    return fragment if _displays_same(fragment, original.nodes, media) else None
+    fragment = join_blocks(parts)
+    if not _displays_same(display(render_html(fragment, media)), unit.nodes):
+        return None
+    return fragment
 
 
 def _for_conversion(node: Node, media: Media) -> Node:
     """Rewrite WordPress presentation markup into the form the converter reads."""
     if not isinstance(node, Element):
         return node
+    if "data-bpsync-embed" in node.attrs:
+        return Element("p", {}, [node.attrs["data-bpsync-embed"]])
     classes = node.attrs.get("class", "").split()
     if node.tag == "figure" and "wp-block-table" in classes:
         tables = [c for c in node.children if isinstance(c, Element)]
         if len(classes) == 1 and len(tables) == 1 and tables[0].tag == "table":
             return tables[0]
-    if node.tag == "figure" and "wp-block-image" in classes:
-        image = _figure_image(node, classes, media)
-        if image is not None:
-            return Element("p", {}, [image])
+    image = _parse_image(node)
+    if image is not None and not image.figure_classes:
+        attrs = {"src": image.src, **dict(image.attrs)}
+        if image.alt is not None:
+            attrs["alt"] = image.alt
+        if image.media_id is not None:
+            attrs["src"] = media.remember(image.src, image.media_id, image.size)  # type: ignore[arg-type]
+        if image.caption:
+            attrs["title"] = image.caption
+        classes = list(image.placement) + list(image.image_classes)
+        if classes:
+            attrs["class"] = " ".join(classes)
+        return Element("p", {}, [Element("img", attrs)])
     return Element(
         node.tag, node.attrs, [_for_conversion(c, media) for c in node.children]
     )
-
-
-def _figure_image(figure: Element, classes: list[str], media: Media) -> Element | None:
-    if set(figure.attrs) != {"class"}:
-        return None
-    children = [
-        c for c in figure.children if not (isinstance(c, str) and not c.strip())
-    ]
-    if not children or not isinstance(children[0], Element) or children[0].tag != "img":
-        return None
-    attrs = dict(children[0].attrs)
-    if len(children) == 2:
-        caption = children[1]
-        if (
-            not isinstance(caption, Element)
-            or caption.tag != "figcaption"
-            or not all(isinstance(c, str) for c in caption.children)
-        ):
-            return None
-        attrs["title"] = "".join(caption.children).strip()  # type: ignore[arg-type]
-    elif len(children) != 1:
-        return None
-    image_classes = attrs.pop("class", "").split()
-    sizes = [match[1] for cls in classes if (match := SIZE_CLASS.fullmatch(cls))]
-    ids = [
-        match[1] for cls in image_classes if (match := WP_IMAGE_CLASS.fullmatch(cls))
-    ]
-    if (
-        len(image_classes) != len(ids)
-        or len(ids) > 1
-        or len(sizes) > 1
-        or len(ids) != len(sizes)
-    ):
-        return None
-    if ids:
-        attrs["src"] = media.remember(attrs["src"], ids[0], sizes[0])
-    other = [
-        cls
-        for cls in classes
-        if cls != "wp-block-image" and not SIZE_CLASS.fullmatch(cls)
-    ]
-    if other:
-        attrs["class"] = " ".join(other)
-    return Element("img", attrs)
-
-
-def _displays_same(markdown: str, original: list[Node], media: Media) -> bool:
-    return _comparable(_render(markdown, media)) == _comparable(original)
-
-
-def _comparable(nodes: list[Node]) -> tuple:
-    return canonical(nodes, EDITOR_CLASSES)
-
-
-def _separate_adjacent_lists(fragments: list[str]) -> None:
-    """Adjacent Markdown lists merge unless their markers differ."""
-    for index in range(1, len(fragments)):
-        previous, current = fragments[index - 1], fragments[index]
-        if previous.startswith("- ") and current.startswith("- "):
-            fragments[index] = re.sub(r"^- ", "* ", current, flags=re.M)
-        elif re.match(r"\d+\. ", previous) and re.match(r"\d+\. ", current):
-            fragments[index] = re.sub(r"^(\d+)\. ", r"\1) ", current, flags=re.M)
-
-
-def _classic_originals(raw: str) -> list[_Original]:
-    nodes = parse_html(autop(raw))
-    return [_Original([node], _label(node)) for node in nodes if not _blank(node)]
-
-
-def _blank(node: Node) -> bool:
-    return isinstance(node, str) and not node.strip()
-
-
-def _label(node: Node) -> str:
-    if isinstance(node, Element):
-        return f"<{node.tag}>"
-    return "comment" if isinstance(node, Comment) else "text"
-
-
-@dataclass
-class _Block:
-    name: str
-    attrs: dict
-    start: int
-    inner_start: int
-    names: set[str]
-
-
-def _block_originals(raw: str) -> list[_Original]:
-    """Split block content into what each top-level block displays."""
-    originals: list[_Original] = []
-    stack: list[_Block] = []
-    cursor = 0
-
-    def freeform(text: str) -> None:
-        for node in parse_html(text):
-            if not _blank(node):
-                if isinstance(node, str):
-                    node = Element("p", {}, [node.strip()])
-                originals.append(_Original([node], _label(node)))
-
-    for match in DELIMITER.finditer(raw):
-        name = (match["namespace"] or "core/") + match["name"]
-        if match["closer"]:
-            if not stack or stack[-1].name != name:
-                return [_Original(parse_html(raw), "malformed block markup")]
-            block = stack.pop()
-            if stack:
-                stack[-1].names |= block.names
-                continue
-            originals.extend(
-                _top_level(
-                    raw[block.start : match.end()],
-                    block,
-                    raw[block.inner_start : match.start()],
-                )
-            )
-            cursor = match.end()
-            continue
-        try:
-            attrs = json.loads(match["attrs"]) if match["attrs"] else {}
-        except json.JSONDecodeError:
-            return [_Original(parse_html(raw), "malformed block markup")]
-        if not stack:
-            freeform(raw[cursor : match.start()])
-        if match["void"]:
-            if stack:
-                stack[-1].names.add(name)
-            else:
-                originals.append(_Original([Comment(match.group(0)[4:-3])], name))
-                cursor = match.end()
-            continue
-        stack.append(_Block(name, attrs, match.start(), match.end(), {name}))
-    if stack:
-        return [_Original(parse_html(raw), "malformed block markup")]
-    freeform(raw[cursor:])
-    return originals
-
-
-def _top_level(markup: str, block: _Block, inner: str) -> list[_Original]:
-    if block.name == "core/embed" or block.name.startswith("core-embed/"):
-        url = block.attrs.get("url")
-        figures = [n for n in parse_html(inner) if isinstance(n, Element)]
-        has_caption = any(
-            isinstance(c, Element) and c.tag == "figcaption"
-            for figure in figures
-            for c in figure.children
-        )
-        if isinstance(url, str) and not has_caption:
-            return [_Original([Element("p", {}, [url])], block.name)]
-    if block.name == "core/shortcode":
-        return [
-            _Original([n], block.name)
-            for n in parse_html(autop(inner))
-            if not _blank(n)
-        ]
-    if block.names <= STATIC_BLOCKS:
-        stripped = DELIMITER.sub("", inner)
-        return [
-            _Original([n], block.name) for n in parse_html(stripped) if not _blank(n)
-        ]
-    return [_Original([n for n in parse_html(markup) if not _blank(n)], block.name)]

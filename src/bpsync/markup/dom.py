@@ -1,10 +1,16 @@
-"""A small HTML tree for converting and comparing post content."""
+"""A small HTML tree for converting and comparing post content.
+
+Markup is parsed with html5lib, which follows the HTML parsing rules browsers
+use, so the tree is what a reader's browser builds.
+"""
 
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from html.parser import HTMLParser
+
+import html5lib
 
 VOID_TAGS = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split()
@@ -14,13 +20,21 @@ PRESERVED_WHITESPACE_TAGS = frozenset({"pre", "textarea", "script", "style"})
 BLOCK_TAGS = frozenset(
     """address article aside blockquote caption col colgroup dd details dialog div
     dl dt fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hgroup hr
-    li main menu nav ol p pre section summary table tbody td tfoot th thead tr ul
-    audio canvas embed iframe object picture svg video""".split()
+    li main menu nav ol p pre section summary table tbody td tfoot th thead tr
+    ul""".split()
 )
-"""Elements whose surrounding and edge whitespace does not affect display."""
+"""Elements browsers display as blocks, so whitespace around their edges is hidden."""
 TAG_ALIASES = {"b": "strong", "i": "em"}
 EDGE_SPACE_TAGS = frozenset({"strong", "em"})
+EMPTY_FORMATTING_TAGS = frozenset({"strong", "em", "b", "i", "span"})
 WHITESPACE = re.compile(r"[ \t\n\r\f]+")
+HTML_SPACE = " \t\n\r\f"
+LAYOUT_STYLE = re.compile(r"(?:^|;)\s*(?:white-space|display)\s*:", re.IGNORECASE)
+NAMESPACE_PREFIXES = {
+    "http://www.w3.org/1999/xlink": "xlink",
+    "http://www.w3.org/XML/1998/namespace": "xml",
+    "http://www.w3.org/2000/xmlns/": "xmlns",
+}
 
 
 @dataclass
@@ -37,47 +51,39 @@ class Comment:
 
 Node = Element | Comment | str
 
+_PARSER = html5lib.HTMLParser(namespaceHTMLElements=False)
 
-class _TreeBuilder(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.root = Element("")
-        self.stack = [self.root]
 
-    def _append(self, node: Node) -> None:
-        children = self.stack[-1].children
-        if isinstance(node, str) and children and isinstance(children[-1], str):
-            children[-1] += node
+def _local_name(name: str) -> str:
+    if not name.startswith("{"):
+        return name
+    namespace, local = name[1:].split("}", 1)
+    prefix = NAMESPACE_PREFIXES.get(namespace)
+    return f"{prefix}:{local}" if prefix else local
+
+
+def _append_node(nodes: list[Node], node: Node) -> None:
+    if isinstance(node, str) and nodes and isinstance(nodes[-1], str):
+        nodes[-1] += node
+    elif node != "":
+        nodes.append(node)
+
+
+def _children(element: ET.Element) -> list[Node]:
+    nodes: list[Node] = []
+    _append_node(nodes, element.text or "")
+    for child in element:
+        if child.tag is ET.Comment:
+            nodes.append(Comment(child.text or ""))
         else:
-            children.append(node)
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        element = Element(tag, {name: value or "" for name, value in attrs})
-        self._append(element)
-        if tag not in VOID_TAGS:
-            self.stack.append(element)
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self._append(Element(tag, {name: value or "" for name, value in attrs}))
-
-    def handle_endtag(self, tag: str) -> None:
-        for depth in range(len(self.stack) - 1, 0, -1):
-            if self.stack[depth].tag == tag:
-                del self.stack[depth:]
-                return
-
-    def handle_data(self, data: str) -> None:
-        self._append(data)
-
-    def handle_comment(self, data: str) -> None:
-        self._append(Comment(data))
+            attrs = {_local_name(name): value for name, value in child.attrib.items()}
+            nodes.append(Element(_local_name(child.tag), attrs, _children(child)))
+        _append_node(nodes, child.tail or "")
+    return nodes
 
 
 def parse_html(markup: str) -> list[Node]:
-    builder = _TreeBuilder()
-    builder.feed(markup)
-    builder.close()
-    return builder.root.children
+    return _children(_PARSER.parseFragment(markup))
 
 
 def _escape_text(text: str) -> str:
@@ -85,7 +91,12 @@ def _escape_text(text: str) -> str:
 
 
 def _escape_attribute(value: str) -> str:
-    return value.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+    return (
+        value.replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace("\n", "&#10;")
+    )
 
 
 def start_tag(element: Element) -> str:
@@ -93,6 +104,13 @@ def start_tag(element: Element) -> str:
         f' {name}="{_escape_attribute(value)}"' for name, value in element.attrs.items()
     )
     return f"<{element.tag}{attributes}>"
+
+
+def preserves_whitespace(element: Element) -> bool:
+    """Whether whitespace in and around the element may be displayed as written."""
+    return element.tag in PRESERVED_WHITESPACE_TAGS or bool(
+        LAYOUT_STYLE.search(element.attrs.get("style", ""))
+    )
 
 
 def serialize(nodes: list[Node], *, preserve_whitespace: bool = False) -> str:
@@ -103,12 +121,12 @@ def serialize(nodes: list[Node], *, preserve_whitespace: bool = False) -> str:
             text = node if preserve_whitespace else node.replace("\n", " ")
             out.append(_escape_text(text))
         elif isinstance(node, Comment):
-            if node.text.strip():
-                out.append(f"<!--{node.text.replace(chr(10), ' ')}-->")
+            if node.text.strip(HTML_SPACE):
+                out.append(f"<!--{node.text}-->")
         elif node.tag in VOID_TAGS:
             out.append(start_tag(node)[:-1] + " />")
         else:
-            preserve = preserve_whitespace or node.tag in PRESERVED_WHITESPACE_TAGS
+            preserve = preserve_whitespace or preserves_whitespace(node)
             if node.tag in RAW_TEXT_TAGS:
                 inner = "".join(
                     child for child in node.children if isinstance(child, str)
@@ -124,12 +142,16 @@ def to_html(nodes: list[Node]) -> str:
 
 
 def is_block(node: Node) -> bool:
-    return isinstance(node, Element) and node.tag in BLOCK_TAGS
+    return (
+        isinstance(node, Element)
+        and node.tag in BLOCK_TAGS
+        and not LAYOUT_STYLE.search(node.attrs.get("style", ""))
+    )
 
 
 def _breaks_line(node: Node | None) -> bool:
     """Whitespace next to a block or a line break is not displayed."""
-    return isinstance(node, Element) and (node.tag in BLOCK_TAGS or node.tag == "br")
+    return is_block(node) or (isinstance(node, Element) and node.tag == "br")
 
 
 def trim_block_whitespace(
@@ -142,9 +164,9 @@ def trim_block_whitespace(
     """
     result: list[Node] = []
     for node in nodes:
-        if isinstance(node, Element) and node.tag not in PRESERVED_WHITESPACE_TAGS:
+        if isinstance(node, Element) and not preserves_whitespace(node):
             children = trim_block_whitespace(
-                node.children, block_context=node.tag in BLOCK_TAGS
+                node.children, block_context=is_block(node)
             )
             node = Element(node.tag, node.attrs, children)
         result.append(node)
@@ -152,7 +174,17 @@ def trim_block_whitespace(
     result.reverse()
     result = _strip_after_breaks(result, block_context, leading=False)
     result.reverse()
-    return result
+    return [node for node in result if not _empty_formatting(node)]
+
+
+def _empty_formatting(node: Node) -> bool:
+    """Plain bold, italic, or span with nothing inside displays nothing."""
+    return (
+        isinstance(node, Element)
+        and node.tag in EMPTY_FORMATTING_TAGS
+        and not node.attrs
+        and not node.children
+    )
 
 
 def _strip_after_breaks(
@@ -170,11 +202,11 @@ def _strip_after_breaks(
 
 def _strip_edge(node: Node, *, leading: bool) -> Node:
     if isinstance(node, str):
-        return node.lstrip(" \t\n\r\f") if leading else node.rstrip(" \t\n\r\f")
+        return node.lstrip(HTML_SPACE) if leading else node.rstrip(HTML_SPACE)
     if (
         not isinstance(node, Element)
-        or node.tag in BLOCK_TAGS
-        or node.tag in PRESERVED_WHITESPACE_TAGS
+        or is_block(node)
+        or preserves_whitespace(node)
         or not node.children
     ):
         return node
@@ -205,31 +237,27 @@ def _canonical_children(
     out: list[Canonical] = []
     for node in nodes:
         if isinstance(node, str):
-            text = node if preserve else WHITESPACE.sub(" ", node)
-            if out and out[-1][0] == "text":
-                out[-1] = ("text", out[-1][1] + text)
-            elif text:
-                out.append(("text", text))
+            _append_text(out, node if preserve else WHITESPACE.sub(" ", node))
         elif isinstance(node, Comment):
-            if node.text.strip():
-                out.append(("comment", node.text.strip()))
+            # Comments are never displayed; only their words matter.
+            text = WHITESPACE.sub(" ", node.text).strip()
+            if text:
+                out.append(("comment", text))
         else:
             tag = TAG_ALIASES.get(node.tag, node.tag)
             attrs = _canonical_attrs(node.attrs, ignored_classes)
             inner = _canonical_children(
-                node.children,
-                ignored_classes,
-                preserve or node.tag in PRESERVED_WHITESPACE_TAGS,
+                node.children, ignored_classes, preserve or preserves_whitespace(node)
             )
             if tag == "pre":
-                inner = _trim_preformatted(inner)
+                inner = _trim_trailing_newline(inner)
             if tag == "span" and not attrs:
                 for child in inner:
-                    if child[0] == "text" and out and out[-1][0] == "text":
-                        out[-1] = ("text", out[-1][1] + child[1])
+                    if child[0] == "text":
+                        _append_text(out, child[1])
                     else:
                         out.append(child)
-            elif tag in EDGE_SPACE_TAGS and not preserve:
+            elif tag in EDGE_SPACE_TAGS and not attrs and not preserve:
                 lead, inner, trail = _edge_spaces(inner)
                 _append_text(out, lead)
                 out.append(("element", tag, attrs, tuple(inner)))
@@ -249,7 +277,7 @@ def _append_text(out: list[Canonical], text: str) -> None:
 
 
 def _edge_spaces(inner: list[Canonical]) -> tuple[str, list[Canonical], str]:
-    """Spaces at the edges of bold or italic text display as if outside it."""
+    """Spaces at the edges of plain bold or italic text display as if outside it."""
     inner = list(inner)
     lead = trail = ""
     if inner and inner[0][0] == "text" and inner[0][1].startswith(" "):
@@ -261,24 +289,19 @@ def _edge_spaces(inner: list[Canonical]) -> tuple[str, list[Canonical], str]:
     return lead, [node for node in inner if node != ("text", "")], trail
 
 
-def _trim_preformatted(children: list[Canonical]) -> list[Canonical]:
-    """Browsers do not display one leading or trailing newline in `<pre>`."""
-
-    def edit(nodes: list[Canonical], index: int, trim) -> list[Canonical]:  # noqa: ANN001
-        if not nodes:
-            return nodes
-        node = nodes[index]
-        nodes = list(nodes)
-        if node[0] == "text":
-            text = trim(node[1])
-            nodes[index] = ("text", text)
-            return [n for n in nodes if n != ("text", "")]
-        if node[0] == "element":
-            nodes[index] = (*node[:3], tuple(edit(list(node[3]), index, trim)))
-        return nodes
-
-    children = edit(children, 0, lambda text: text.removeprefix("\n"))
-    return edit(children, -1, lambda text: text.removesuffix("\n"))
+def _trim_trailing_newline(children: list[Canonical]) -> list[Canonical]:
+    """A single line break at the very end of `<pre>` is not displayed."""
+    if not children:
+        return children
+    children = list(children)
+    last = children[-1]
+    if last[0] == "text":
+        text = last[1].removesuffix("\n")
+        children[-1] = ("text", text)
+        return [child for child in children if child != ("text", "")]
+    if last[0] == "element":
+        children[-1] = (*last[:3], tuple(_trim_trailing_newline(list(last[3]))))
+    return children
 
 
 def canonical(

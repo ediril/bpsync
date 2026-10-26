@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -31,7 +32,7 @@ class WordPressError(Exception):
     """Raised when a WordPress site cannot be reached or rejects a request."""
 
 
-def _request(
+def request(
     http: httpx.Client, method: str, url: str | httpx.URL, **options: Any
 ) -> httpx.Response:
     try:
@@ -45,7 +46,7 @@ def discover_api_root(site: str, transport: httpx.BaseTransport | None = None) -
     with httpx.Client(
         headers=HEADERS, timeout=TIMEOUT, follow_redirects=True, transport=transport
     ) as http:
-        response = _request(http, "GET", site)
+        response = request(http, "GET", site)
     link = response.links.get(API_LINK_RELATION)
     if link is None or not link.get("url"):
         raise WordPressError(
@@ -86,6 +87,9 @@ def _error_message(response: httpx.Response) -> str:
     return message
 
 
+FINGERPRINT_FIELDS = "id,title,content,slug,status,date_gmt,categories,tags"
+
+
 def fingerprint(post: dict[str, Any]) -> str:
     """A checksum of the stored fields BPSync synchronizes."""
     fields = {
@@ -108,7 +112,7 @@ def remote_state(post: dict[str, Any]) -> RemoteState:
     )
 
 
-def _parse_gmt(value: str) -> datetime:
+def parse_gmt(value: str) -> datetime:
     return datetime.fromisoformat(value).replace(tzinfo=UTC)
 
 
@@ -135,7 +139,7 @@ class WordPressClient:
         self.http.close()
 
     def get(self, route: str, params: dict[str, Any] | None = None) -> httpx.Response:
-        response = _request(self.http, "GET", route_url(self.api_root, route, params))
+        response = request(self.http, "GET", route_url(self.api_root, route, params))
         if response.is_error:
             raise WordPressError(_error_message(response))
         return response
@@ -152,36 +156,53 @@ class WordPressClient:
     def current_user(self) -> dict[str, Any]:
         return self.get("wp/v2/users/me", {"context": "edit"}).json()
 
-    def post_summaries(self) -> list[PostSummary]:
-        params = {
+    def posts(
+        self, fields: str, *, ids: list[str] | None = None, slug: str | None = None
+    ) -> Iterator[dict[str, Any]]:
+        """Posts in the synchronized statuses, oldest first, without trashed posts."""
+        params: dict[str, Any] = {
             "context": "edit",
             "status": SYNCED_STATUSES,
             "orderby": "id",
             "order": "asc",
-            "_fields": "id,title,slug,status,date_gmt",
+            "_fields": fields,
         }
+        if slug is not None:
+            params["slug"] = slug
+        if ids is None:
+            yield from self.get_all("wp/v2/posts", params)
+            return
+        for start in range(0, len(ids), PAGE_SIZE):
+            batch = {**params, "include": ",".join(ids[start : start + PAGE_SIZE])}
+            yield from self.get_all("wp/v2/posts", batch)
+
+    def post_summaries(self) -> list[PostSummary]:
         return [
             PostSummary(
                 id=str(post["id"]),
                 title=post["title"]["raw"],
                 slug=post["slug"],
                 status=STATUSES[post["status"]],
-                date=_parse_gmt(post["date_gmt"]),
+                date=parse_gmt(post["date_gmt"]),
             )
-            for post in self.get_all("wp/v2/posts", params)
+            for post in self.posts("id,title,slug,status,date_gmt")
         ]
 
     def post_states(self, ids: list[str]) -> dict[str, RemoteState]:
         """The current state of the given posts; missing or trashed posts are absent."""
-        states: dict[str, RemoteState] = {}
-        for start in range(0, len(ids), PAGE_SIZE):
-            batch = ids[start : start + PAGE_SIZE]
-            params = {
-                "context": "edit",
-                "status": SYNCED_STATUSES,
-                "include": ",".join(batch),
-                "_fields": "id,title,content,slug,status,date_gmt,categories,tags",
-            }
-            for post in self.get_all("wp/v2/posts", params):
-                states[str(post["id"])] = remote_state(post)
-        return states
+        return {
+            str(post["id"]): remote_state(post)
+            for post in self.posts(FINGERPRINT_FIELDS, ids=ids)
+        }
+
+    def term_names(self, taxonomy: str) -> dict[int, str]:
+        terms = self.get_all(f"wp/v2/{taxonomy}", {"_fields": "id,name"})
+        return {term["id"]: term["name"] for term in terms}
+
+    def site_timezone(self) -> tzinfo:
+        """The time zone the site displays dates in."""
+        index = self.get("", {"_fields": "timezone_string,gmt_offset"}).json()
+        # A site set to a manual UTC offset has no time zone name.
+        if index.get("timezone_string"):
+            return ZoneInfo(index["timezone_string"])
+        return timezone(timedelta(hours=float(index.get("gmt_offset") or 0)))

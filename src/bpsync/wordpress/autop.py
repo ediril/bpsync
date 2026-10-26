@@ -17,6 +17,16 @@ BLOCKS = (
     "summary"
 )
 BLOCK_TAG = rf"</?(?:{BLOCKS})[^>]*>"
+BLOCK_NAMES = frozenset(
+    name
+    for alternative in BLOCKS.split("|")
+    for name in (
+        [f"h{level}" for level in range(1, 7)]
+        if alternative == "h[1-6]"
+        else [alternative]
+    )
+)
+"""Tags that `wpautop` treats as paragraph boundaries."""
 PRE_CONTENT = re.compile(r"(<pre\b[^>]*>)(.*?)(</pre>)", re.S | re.I)
 KEPT_NEWLINES = re.compile(r"<(script|style|svg|math)\b.*?</\1>", re.S | re.I)
 MARKUP = re.compile(r"<!--.*?-->|<[^>]*>", re.S)
@@ -52,8 +62,10 @@ def autop(text: str) -> str:
     text = _sub(rf"(<(?:{BLOCKS})[\s/>])", r"\n\n\1", text)
     text = _sub(rf"(</(?:{BLOCKS})>)", r"\1\n\n", text)
     text = _sub(r"(<hr\s*/?>)", r"\1\n\n", text)
-    chunks = (chunk.strip() for chunk in re.split(r"\n\s*\n", text))
-    text = "".join(f"<p>{chunk}</p>\n" for chunk in chunks if chunk)
+    text = _keep_together(text)
+    # Only newlines are trimmed; other edge whitespace stays inside the paragraph.
+    chunks = (chunk.strip("\n") for chunk in re.split(r"\n\s*\n", text) if chunk)
+    text = "".join(f"<p>{chunk}</p>\n" for chunk in chunks)
 
     text = _sub(r"<p>\s*</p>", "", text)
     text = _sub(r"<p>([^<]+)</(div|address|form)>", r"<p>\1</p></\2>", text)
@@ -76,4 +88,27 @@ def autop(text: str) -> str:
     text = text.replace(NEWLINE_PLACEHOLDER, "\n")
     for index, content in enumerate(preformatted):
         text = text.replace(PRE_PLACEHOLDER.format(index), content)
+    return text
+
+
+def _keep_together(text: str) -> str:
+    """Rejoin elements that must stay attached to their neighbors.
+
+    Option lists, object parameters, media sources, and figure captions are not
+    split into paragraphs of their own.
+    """
+    if "<option" in text:
+        text = _sub(r"\s*<option", "<option", text)
+        text = _sub(r"</option>\s*", "</option>", text)
+    if "</object>" in text:
+        text = _sub(r"(<object[^>]*>)\s*", r"\1", text)
+        text = _sub(r"\s*</object>", "</object>", text)
+        text = _sub(r"\s*(</?(?:param|embed)[^>]*>)\s*", r"\1", text)
+    if "<source" in text or "<track" in text:
+        text = _sub(r"([<\[](?:audio|video)[^>\]]*[>\]])\s*", r"\1", text)
+        text = _sub(r"\s*([<\[]/(?:audio|video)[>\]])", r"\1", text)
+        text = _sub(r"\s*(<(?:source|track)[^>]*>)\s*", r"\1", text)
+    if "<figcaption" in text:
+        text = _sub(r"\s*(<figcaption[^>]*>)", r"\1", text)
+        text = _sub(r"</figcaption>\s*", "</figcaption>", text)
     return text

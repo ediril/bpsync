@@ -21,11 +21,13 @@ from bpsync.config import (
     validate_environment_name,
     validate_profile_name,
 )
-from bpsync.documents import DocumentError, scan_documents
+from bpsync.documents import DocumentError, LocalDocument, scan_documents
 from bpsync.posts import PostStatus, PostSummary, RemoteState
-from bpsync.state import StateError, read_records
-from bpsync.sync import Action, SelectionError, compare, select
+from bpsync.pull import Puller
+from bpsync.state import StateError, read_media, read_records
+from bpsync.sync import Action, DiffEntry, SelectionError, compare, select
 from bpsync.wordpress.client import WordPressClient, WordPressError, discover_api_root
+from bpsync.wordpress.remote import WordPressRemote
 
 COMMANDS = (
     "create",
@@ -37,9 +39,10 @@ COMMANDS = (
     "profiles",
     "ls",
     "diff",
+    "pull",
 )
 PROFILE_AWARE_COMMANDS = frozenset(
-    {"connect", "map", "remove", "root", "profile", "ls", "diff"}
+    {"connect", "map", "remove", "root", "profile", "ls", "diff", "pull"}
 )
 RESET = "\033[0m"
 MARKER_COLORS = {
@@ -273,6 +276,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     diff.add_argument(
         "-a", "--all", action="store_true", help="also show unchanged posts"
+    )
+
+    pull = subparsers.add_parser(
+        "pull",
+        help="bring posts from the blog into local files",
+        usage="bpsync pull [POST] [-y]\n       bpsync PROFILE pull [POST] [-y]",
+        description=(
+            "Create and update local post files from the blog and download their "
+            "images. Local edits are never overwritten without asking. POST is a "
+            "post ID, slug, or file."
+        ),
+    )
+    pull.add_argument(
+        "post", nargs="?", metavar="POST", help="one post; all when omitted"
+    )
+    pull.add_argument(
+        "-y", "--yes", action="store_true", help="answer yes to every question"
     )
     return parser
 
@@ -582,17 +602,83 @@ def _diff(arguments: argparse.Namespace, session: _Session) -> str:
     ]
     hidden = len(result.entries) - len(shown)
     width = max((len(e.post_id or "-") for e in shown), default=1)
-    lines = []
-    for entry in shown:
-        marker = _paint(f"{entry.action} {entry.side or ' '}", color)
-        detail = f"  {entry.detail}" if entry.detail else ""
-        lines.append(f"{marker}  {entry.post_id or '-':>{width}}  {entry.path}{detail}")
+    lines = [_entry_line(entry, color, width) for entry in shown]
     if not shown:
         lines.append("No local changes.")
     if hidden:
         lines.append(f"Not shown: {hidden} unchanged (-a to show)")
     lines.extend(f"Note: {note}" for note in result.notes)
     return "\n".join(lines)
+
+
+def _entry_line(entry: DiffEntry, color: bool, width: int = 1) -> str:
+    marker = _paint(f"{entry.action} {entry.side or ' '}", color)
+    detail = f"  {entry.detail}" if entry.detail else ""
+    return f"{marker}  {entry.post_id or '-':>{width}}  {entry.path}{detail}"
+
+
+def _pull_target(
+    selector: str | None, documents: list[LocalDocument], root: Path, base: Path
+) -> tuple[list[str] | None, str | None]:
+    """The post IDs or slug a pull selector names; a slug may be remote only."""
+    if selector is None:
+        return None, None
+    if selector.isdigit():
+        return [selector], None
+    if "/" in selector or selector.endswith(".md"):
+        chosen = select(selector, documents, {}, root=root, base=base).documents
+        post_id = chosen[0].document.post_id
+        if post_id is None:
+            raise SelectionError(
+                f"{selector} is not linked to a post yet; push it first"
+            )
+        return [post_id], None
+    local = [d for d in documents if d.document.post.slug == selector]
+    if local and local[0].document.post_id:
+        return [local[0].document.post_id], None
+    return None, selector
+
+
+def _pull(arguments: argparse.Namespace, session: _Session) -> str:
+    profile, base = _profile_root(arguments, session)
+    root = profile.local_root
+    documents = scan_documents(root)
+    ids, slug = _pull_target(arguments.post, documents, root, base)
+    color = _use_color(session.stdout, session.environ)
+
+    def confirm(question: str) -> bool:
+        # Without a terminal nobody can answer, so the question counts as No.
+        if arguments.yes:
+            return True
+        interactive = getattr(session.stdin, "isatty", lambda: False)()
+        return interactive and session.confirm(f"{question} [y/N] ", default=False)
+
+    def report(entry: DiffEntry) -> None:
+        print(_entry_line(entry, color), file=session.stdout, flush=True)
+
+    client = WordPressClient(
+        profile.api_root, profile.username, session.password(profile), session.transport
+    )
+    remote = WordPressRemote(client, session.transport)
+    try:
+        puller = Puller(
+            root,
+            profile.api_root,
+            remote,
+            documents,
+            read_records(root, profile.api_root),
+            read_media(root, profile.api_root),
+            confirm,
+            report,
+        )
+        result = puller.pull(ids=ids, slug=slug)
+    finally:
+        remote.close()
+        client.http.close()
+    summary = result.summary()
+    if result.skipped and not arguments.yes:
+        summary += " Rerun with --yes to accept the skipped changes."
+    return summary
 
 
 HANDLERS = {
@@ -605,6 +691,7 @@ HANDLERS = {
     "profiles": _profiles,
     "ls": _ls,
     "diff": _diff,
+    "pull": _pull,
 }
 
 

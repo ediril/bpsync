@@ -33,6 +33,9 @@ class FakeWordPress:
             for number in range(1, post_count + 1)
         ]
 
+    categories = {1: "News", 2: "Travel"}
+    tags = {5: "python"}
+
     def post(self, post_id):
         return next(post for post in self.posts if post["id"] == int(post_id))
 
@@ -49,6 +52,8 @@ class FakeWordPress:
 
     def __call__(self, request):
         self.requests.append(request)
+        if request.url.path.startswith("/wp-content/uploads/"):
+            return httpx.Response(200, content=b"image:" + request.url.path.encode())
         route = self.route(request)
         if route is None:
             link = f'<{self.api_root}>; rel="https://api.w.org/"'
@@ -75,6 +80,17 @@ class FakeWordPress:
                     },
                 },
             )
+        if route == "/":
+            return httpx.Response(
+                200, json={"timezone_string": "Europe/Istanbul", "gmt_offset": 3}
+            )
+        if route in ("/wp/v2/categories", "/wp/v2/tags"):
+            terms = self.categories if route.endswith("categories") else self.tags
+            return httpx.Response(
+                200,
+                json=[{"id": i, "name": n} for i, n in terms.items()],
+                headers={"X-WP-TotalPages": "1"},
+            )
         if route == "/wp/v2/posts":
             per_page = int(request.url.params["per_page"])
             page = int(request.url.params["page"])
@@ -82,6 +98,8 @@ class FakeWordPress:
             if "include" in request.url.params:
                 wanted = {int(i) for i in request.url.params["include"].split(",")}
                 posts = [post for post in posts if post["id"] in wanted]
+            if "slug" in request.url.params:
+                posts = [p for p in posts if p["slug"] == request.url.params["slug"]]
             pages = max(1, -(-len(posts) // per_page))
             chunk = posts[(page - 1) * per_page : page * per_page]
             return httpx.Response(
@@ -97,7 +115,7 @@ def invoke(arguments, store, *, stdin="", wordpress=None, password=PASSWORD):
     status = run(
         arguments,
         store=store,
-        stdin=io.StringIO(stdin),
+        stdin=stdin if hasattr(stdin, "readline") else io.StringIO(stdin),
         stdout=stdout,
         stderr=stderr,
         environ={"MYBLOG_WP_PASSWORD": password} if password else {},

@@ -25,6 +25,13 @@ CREATE TABLE posts (
     remote_fingerprint TEXT NOT NULL,
     remote_format TEXT NOT NULL CHECK (remote_format IN ('blocks', 'html'))
 );
+CREATE TABLE media (
+    path TEXT PRIMARY KEY,
+    checksum TEXT NOT NULL,
+    media_id TEXT NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    size TEXT NOT NULL
+);
 """
 
 
@@ -43,6 +50,17 @@ class PostRecord:
     remote_format: ContentFormat
 
 
+@dataclass(frozen=True)
+class MediaRecord:
+    path: PurePosixPath
+    """Relative to the profile's local root."""
+    checksum: str
+    """Of the file as downloaded or uploaded."""
+    media_id: str
+    url: str
+    size: str
+
+
 def _check_site(connection: sqlite3.Connection, path: Path, api_root: str) -> None:
     version = connection.execute("PRAGMA user_version").fetchone()[0]
     if version != SCHEMA_VERSION:
@@ -56,29 +74,53 @@ def _check_site(connection: sqlite3.Connection, path: Path, api_root: str) -> No
         )
 
 
-def read_records(root: Path, api_root: str) -> dict[str, PostRecord]:
-    """Read every post record without creating or changing the database."""
+@contextmanager
+def _read_only(root: Path, api_root: str) -> Iterator[sqlite3.Connection | None]:
     path = root / STATE_PATH
     if not path.exists():
-        return {}
+        yield None
+        return
     try:
         connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
             _check_site(connection, path, api_root)
-            rows = connection.execute(
-                "SELECT post_id, path, body_checksum, fields_checksum, "
-                "remote_fingerprint, remote_format FROM posts"
-            ).fetchall()
+            yield connection
         finally:
             connection.close()
     except sqlite3.Error as error:
         raise StateError(f"cannot read {path}: {error}") from error
+
+
+def read_records(root: Path, api_root: str) -> dict[str, PostRecord]:
+    """Read every post record without creating or changing the database."""
+    with _read_only(root, api_root) as connection:
+        if connection is None:
+            return {}
+        rows = connection.execute(
+            "SELECT post_id, path, body_checksum, fields_checksum, "
+            "remote_fingerprint, remote_format FROM posts"
+        ).fetchall()
     return {
         row[0]: PostRecord(
-            row[0], PurePosixPath(row[1]), row[2], row[3], row[4], ContentFormat(row[5])
+            row[0],
+            PurePosixPath(row[1]),
+            row[2],
+            row[3],
+            row[4],
+            ContentFormat(row[5]),
         )
         for row in rows
     }
+
+
+def read_media(root: Path, api_root: str) -> list[MediaRecord]:
+    with _read_only(root, api_root) as connection:
+        if connection is None:
+            return []
+        rows = connection.execute(
+            "SELECT path, checksum, media_id, url, size FROM media"
+        ).fetchall()
+    return [MediaRecord(PurePosixPath(row[0]), *row[1:]) for row in rows]
 
 
 class StateWriter:
@@ -100,8 +142,17 @@ class StateWriter:
             ),
         )
 
-    def forget(self, post_id: str) -> None:
-        self.connection.execute("DELETE FROM posts WHERE post_id = ?", (post_id,))
+    def save_media(self, record: MediaRecord) -> None:
+        self.connection.execute(
+            "INSERT OR REPLACE INTO media VALUES (?, ?, ?, ?, ?)",
+            (
+                str(record.path),
+                record.checksum,
+                record.media_id,
+                record.url,
+                record.size,
+            ),
+        )
 
 
 @contextmanager
