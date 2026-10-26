@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import unquote, urlsplit
 
-from bpsync.state import MediaRecord
+from wpsync.state import MediaRecord
 
 IMAGES_DIR = "images"
 

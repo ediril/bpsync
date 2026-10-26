@@ -22,7 +22,7 @@ from mdit_py_plugins.attrs import attrs_block_plugin, attrs_plugin
 from mdit_py_plugins.attrs.parse import parse as parse_attrs
 from mdit_py_plugins.container import container_plugin
 
-from bpsync.markup.dom import (
+from wpsync.markup.dom import (
     BLOCK_TAGS,
     VOID_TAGS,
     Comment,

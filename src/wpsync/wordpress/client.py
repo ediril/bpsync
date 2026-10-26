@@ -11,8 +11,8 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from bpsync import __version__
-from bpsync.posts import ContentFormat, PostStatus, PostSummary, RemoteState
+from wpsync import __version__
+from wpsync.posts import ContentFormat, PostStatus, PostSummary, RemoteState
 
 API_LINK_RELATION = "https://api.w.org/"
 TIMEOUT = httpx.Timeout(30.0)
@@ -25,7 +25,7 @@ STATUSES = {
     "pending": PostStatus.PENDING,
     "private": PostStatus.PRIVATE,
 }
-HEADERS = {"User-Agent": f"bpsync/{__version__}"}
+HEADERS = {"User-Agent": f"wpsync/{__version__}"}
 
 
 class WordPressError(Exception):
@@ -91,7 +91,7 @@ FINGERPRINT_FIELDS = "id,title,content,slug,status,date_gmt,categories,tags"
 
 
 def fingerprint(post: dict[str, Any]) -> str:
-    """A checksum of the stored fields BPSync synchronizes."""
+    """A checksum of the stored fields WPSync synchronizes."""
     fields = {
         "title": post["title"]["raw"],
         "content": post["content"]["raw"],

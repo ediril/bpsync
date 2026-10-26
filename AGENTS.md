@@ -1,5 +1,5 @@
 ## Project Memory
-- This file is the persistent memory for agents working on BPSync. Record
+- This file is the persistent memory for agents working on WPSync. Record
   every durable fact, preference, correction, and directive here, and nowhere
   else.
 - An exact copy of this file is the Claude memory file at
@@ -10,21 +10,23 @@
   compaction before continuing work.
 
 ## Project Context
-- BPSync (Blog Post Sync) is a local-first CLI that manages blog posts as
-  Markdown files, starting with WordPress. `plans/mvp.md` defines the MVP;
-  `TODO.md` is the ordered work queue.
-- The PyPI distribution, command, and Python package are all `bpsync`. The
-  project was first called WPSync; `wpsync` on PyPI belongs to an unrelated
-  project.
+- WPSync is a local-first CLI that manages blog posts as Markdown files,
+  starting with WordPress. `plans/mvp.md` defines the MVP; `TODO.md` is the
+  ordered work queue.
+- The PyPI distribution, command, and Python package are all `wpsync`. The
+  `wpsync` name on PyPI belongs to another project whose owner may transfer it;
+  its published 1.0.x versions are why WPSync's versions start at 2.0.1. The
+  `rename` branch keeps the project as BPSync (Blog Post Sync) in case the
+  transfer does not happen.
 - WordPress is the only MVP platform, but other blogging platforms are likely
   later. Keep platform-specific code (REST API, HTML conventions) inside
-  `src/bpsync/wordpress/`; the sync engine, local document format, and project
+  `src/wpsync/wordpress/`; the sync engine, local document format, and project
   state must stay platform-neutral.
-- BPSync shares UX philosophy and CLI conventions (profiles, current-directory
+- WPSync shares UX philosophy and CLI conventions (profiles, current-directory
   inference, environment-variable credentials) with HLSync (`../hlsync`) but
   no code or dependencies. Check HLSync's README before designing a command.
 - Python 3.11+, packaged with uv; tests run with `uv run pytest`.
-- BPSync is licensed under PolyForm Strict 1.0.0 (noncommercial use only; no
+- WPSync is licensed under PolyForm Strict 1.0.0 (noncommercial use only; no
   modification or redistribution; paid commercial licenses). Dependencies must
   be permissively licensed (MIT, BSD, Apache); never copy or port GPL code such
   as WordPress's. Reimplement needed WordPress behavior and check it against

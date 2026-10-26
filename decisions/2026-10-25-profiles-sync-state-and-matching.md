@@ -7,13 +7,13 @@ Date: 2026-10-25
 ### Profiles
 
 A profile maps one local folder to one blog, following HLSync's profile model.
-Profiles live in `~/.bpsync/config.json` and hold the site URL, the discovered
+Profiles live in `~/.wpsync/config.json` and hold the site URL, the discovered
 REST API root, the username, the password environment-variable name, and one
 canonical local root. Local roots may not equal, contain, or be contained by
-another profile's root. `bpsync create NAME --site URL` creates a profile and
+another profile's root. `wpsync create NAME --site URL` creates a profile and
 proposes the current directory as its root. Commands run inside a mapped root
 use that profile; elsewhere the profile is named before the command
-(`bpsync myblog pull`). No profile selection persists between commands.
+(`wpsync myblog pull`). No profile selection persists between commands.
 
 Credentials are WordPress Application Passwords read from an environment
 variable. The variable name defaults to one derived from the profile name, such
@@ -27,11 +27,11 @@ download post content or media.
 ### Sync state
 
 Local files are the source of truth; WordPress is where they are published.
-BPSync assumes the blog is not normally edited independently and checks the
+WPSync assumes the blog is not normally edited independently and checks the
 WordPress side only to avoid overwriting a change made there by accident.
 
-Each local root holds `.bpsync/state.db`, a SQLite database that stores no
-post content. A `site` row records which blog the folder belongs to, and BPSync
+Each local root holds `.wpsync/state.db`, a SQLite database that stores no
+post content. A `site` row records which blog the folder belongs to, and WPSync
 refuses to use the database with a different blog. For every linked post the
 `posts` table stores the post ID, the local path, two checksums of the file as
 of the last sync (one of the body, one of the synchronized header fields
@@ -44,7 +44,7 @@ A post changed locally when either checksum differs. Push sends the content
 only when the body checksum differs, and the header fields only when the header
 checksum differs, so editing only a post's header never replaces block content.
 
-BPSync contacts WordPress only when a command needs it:
+WPSync contacts WordPress only when a command needs it:
 
 - `diff` and `push` fetch, by ID, the posts that changed locally, and warn when
   one also changed on WordPress since the last sync.
@@ -73,7 +73,7 @@ is not required before push; matching prevents duplicate posts.
 
 ### Prompts
 
-BPSync asks before it updates a matched post, overwrites a conflict, creates
+WPSync asks before it updates a matched post, overwrites a conflict, creates
 missing categories or tags, or converts a block-format post to plain HTML.
 Every prompt defaults to No. `-y` / `--yes` answers yes to every prompt within
 the selected files. When no terminal can answer, a prompt counts as No and the
@@ -85,7 +85,7 @@ trash. Pull never deletes local files.
 ## Rationale
 
 The profile model matches HLSync so the two tools behave alike. Checksums and a
-fingerprint recorded at each sync tell BPSync which side changed without
+fingerprint recorded at each sync tell WPSync which side changed without
 comparing clocks, which HLSync needs only because FTP cannot read remote
 content cheaply. Storing checksums instead of copies keeps the database small;
 a text diff of pending changes compares the file with the current WordPress
@@ -97,14 +97,14 @@ journaling.
 
 Titles repeat across posts, while WordPress keeps published slugs unique, so
 matching requires agreement or a single candidate and never picks among several.
-A single `--yes` flag covers every prompt because every case is a question BPSync
+A single `--yes` flag covers every prompt because every case is a question WPSync
 would otherwise ask.
 
 ## Risks
 
 - The WordPress REST API has no conditional update. A remote edit made between
-  BPSync's conflict check and its save is not detected.
-- The media table exists only in the local root. If it is lost, BPSync cannot
+  WPSync's conflict check and its save is not detected.
+- The media table exists only in the local root. If it is lost, WPSync cannot
   recognize uploaded images and the next push uploads duplicates.
 - Git can store `state.db` as a backup but cannot diff or merge it.
 

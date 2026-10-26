@@ -32,11 +32,11 @@ def validate_release(tag: str | None = None) -> str:
 
     scripts_match = CONSOLE_SCRIPTS_PATTERN.search(PYPROJECT_FILE.read_text())
     if scripts_match is None or scripts_match["body"].strip() != (
-        'bpsync = "bpsync.cli:main"'
+        'wpsync = "wpsync.cli:main"'
     ):
         raise SystemExit(
             "release check failed: pyproject.toml must expose only the "
-            "bpsync = bpsync.cli:main console script"
+            "wpsync = wpsync.cli:main console script"
         )
 
     # The version describes the last commit, so artifacts must contain exactly it.

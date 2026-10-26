@@ -22,7 +22,7 @@ def run(*arguments: str) -> None:
 def installed_command(venv: Path) -> Path:
     directory = "Scripts" if os.name == "nt" else "bin"
     suffix = ".exe" if os.name == "nt" else ""
-    return venv / directory / f"bpsync{suffix}"
+    return venv / directory / f"wpsync{suffix}"
 
 
 def main() -> None:
@@ -30,7 +30,7 @@ def main() -> None:
     if uv is None:
         raise SystemExit("release preparation stopped: uv is required")
     version = validate_release()
-    destination = ROOT / "dist" / "bpsync" / version
+    destination = ROOT / "dist" / "wpsync" / version
     if destination.exists():
         raise SystemExit(
             f"release preparation stopped: {destination.relative_to(ROOT)} "
@@ -54,7 +54,7 @@ def main() -> None:
         artifacts = (*wheels, *source_archives)
         run(sys.executable, "-m", "twine", "check", *(map(os.fspath, artifacts)))
 
-        with tempfile.TemporaryDirectory(prefix="bpsync-install-check-") as temp:
+        with tempfile.TemporaryDirectory(prefix="wpsync-install-check-") as temp:
             venv = Path(temp) / "venv"
             run(uv, "venv", "--quiet", os.fspath(venv))
             run(

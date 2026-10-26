@@ -1,4 +1,4 @@
-"""WordPress posts in BPSync's platform-neutral form."""
+"""WordPress posts in WPSync's platform-neutral form."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from urllib.parse import unquote
 
 import httpx
 
-from bpsync.media import Media
-from bpsync.posts import Conversion, FetchedPost, Post
-from bpsync.wordpress.client import (
+from wpsync.media import Media
+from wpsync.posts import Conversion, FetchedPost, Post
+from wpsync.wordpress.client import (
     FINGERPRINT_FIELDS,
     HEADERS,
     STATUSES,
@@ -22,7 +22,7 @@ from bpsync.wordpress.client import (
     remote_state,
     request,
 )
-from bpsync.wordpress.content import to_markdown
+from wpsync.wordpress.content import to_markdown
 
 PULL_FIELDS = FINGERPRINT_FIELDS + ",generated_slug"
 

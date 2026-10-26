@@ -31,7 +31,7 @@ fence otherwise.
 ### Push
 
 Push renders the Markdown to plain HTML and sends it as classic (non-block) post
-content. BPSync does not generate Gutenberg block markup. Rendered blocks are
+content. WPSync does not generate Gutenberg block markup. Rendered blocks are
 separated by blank lines and contain line breaks only inside `<pre>`, so
 WordPress's `wpautop` display filter cannot add paragraphs or breaks. HTML kept
 in the Markdown is sent exactly as written.
@@ -42,7 +42,7 @@ markup (`<figure class="wp-block-image size-large">` with `wp-image-ID`), using
 the media ID and size recorded in the media table; an image title becomes its
 caption. The local Markdown keeps the local path. Images with remote URLs are
 sent as plain `<img>` elements. An embeddable URL alone in a paragraph is sent
-as that bare URL, so WordPress's oEmbed support renders the player; BPSync does
+as that bare URL, so WordPress's oEmbed support renders the player; WPSync does
 not generate iframes for embeds.
 
 ### Pull
@@ -53,9 +53,9 @@ conversion against a model of what WordPress displays:
 - Content with block markup is displayed block by block. A static block shows
   its HTML without block comments; a dynamic block, or any block outside the
   known static set, is compared as its markup; a plain embed shows its URL.
-- Content without block markup goes through `wpautop`. BPSync implements that
+- Content without block markup goes through `wpautop`. WPSync implements that
   filter's behavior independently, because WordPress's code is GPL and cannot be
-  incorporated under BPSync's license, and checks it against WordPress's own
+  incorporated under WPSync's license, and checks it against WordPress's own
   output (`tests/fixtures/wpautop.json`).
 - HTML is parsed with html5lib, which follows the HTML parsing rules browsers
   use, so misnested tags, duplicate attributes, and character references mean
@@ -104,8 +104,8 @@ ask again. `diff` shows the format change before it happens.
 Plain HTML is what WordPress has always accepted through the API, and it has no
 validity requirement. Gutenberg markup must match each block's own save output
 exactly, or the editor reports the block as invalid. That output changes between
-WordPress releases, so generating it would tie BPSync to editor internals for
-little gain. The cost is that posts BPSync writes open in the block editor as a
+WordPress releases, so generating it would tie WPSync to editor internals for
+little gain. The cost is that posts WPSync writes open in the block editor as a
 single Classic block. Only posts the user edits locally are pushed, so untouched
 block posts keep their format.
 

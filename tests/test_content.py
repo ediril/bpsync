@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from bpsync.markup.dom import canonical, parse_html
-from bpsync.media import MediaImage
-from bpsync.wordpress.autop import autop
-from bpsync.wordpress.content import (
+from wpsync.markup.dom import canonical, parse_html
+from wpsync.media import MediaImage
+from wpsync.wordpress.autop import autop
+from wpsync.wordpress.content import (
     EDITOR_CLASSES,
     render_html,
     same_display,

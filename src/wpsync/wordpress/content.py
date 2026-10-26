@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from markdown_it.token import Token
 
-from bpsync.markup.dom import (
+from wpsync.markup.dom import (
     HTML_SPACE,
     Comment,
     Element,
@@ -26,7 +26,7 @@ from bpsync.markup.dom import (
     to_html,
     trim_block_whitespace,
 )
-from bpsync.markup.markdown import (
+from wpsync.markup.markdown import (
     Converter,
     Unconvertible,
     join_blocks,
@@ -35,9 +35,9 @@ from bpsync.markup.markdown import (
     render_inline,
     render_tokens,
 )
-from bpsync.media import Media
-from bpsync.posts import Conversion, UnrepresentableContent
-from bpsync.wordpress.autop import BLOCK_NAMES, autop
+from wpsync.media import Media
+from wpsync.posts import Conversion, UnrepresentableContent
+from wpsync.wordpress.autop import BLOCK_NAMES, autop
 
 EDITOR_CLASSES = frozenset(
     {
@@ -271,7 +271,7 @@ def _block_unit(
     if name == "core/embed" or name.startswith("core-embed/"):
         url = _plain_embed_url(attrs, inner)
         if url is not None:
-            embed = Element("p", {"data-bpsync-embed": url})
+            embed = Element("p", {"data-wpsync-embed": url})
             return _Unit(markup, [embed], name, True, separator)
     if name == "core/shortcode":
         return _Unit(markup, parse_html(autop(inner)), name, True, separator)
@@ -447,7 +447,7 @@ def _canonical_media(nodes: list[Node]) -> list[Node]:
             node = Element(
                 "figure",
                 {
-                    "data-bpsync-image": "",
+                    "data-wpsync-image": "",
                     "src": image.src,
                     "alt": "" if image.alt is None else image.alt,
                     "has-alt": str(image.alt is not None),
@@ -464,7 +464,7 @@ def _canonical_media(nodes: list[Node]) -> list[Node]:
             if len(content) == 1 and isinstance(content[0], str):
                 url = content[0].strip(HTML_SPACE)
                 if EMBED_URL.fullmatch(url):
-                    node = Element("p", {"data-bpsync-embed": url})
+                    node = Element("p", {"data-wpsync-embed": url})
             elif content and all(isinstance(c, Comment) for c in content):
                 # WordPress wraps a lone <!--more--> in an empty paragraph.
                 result.extend(content)
@@ -476,7 +476,7 @@ def _canonical_media(nodes: list[Node]) -> list[Node]:
 
 
 def _is_media_form(node: Element) -> bool:
-    return "data-bpsync-image" in node.attrs or "data-bpsync-embed" in node.attrs
+    return "data-wpsync-image" in node.attrs or "data-wpsync-embed" in node.attrs
 
 
 # Pull ----------------------------------------------------------------------
@@ -540,8 +540,8 @@ def _for_conversion(node: Node, media: Media) -> Node:
     """Rewrite WordPress presentation markup into the form the converter reads."""
     if not isinstance(node, Element):
         return node
-    if "data-bpsync-embed" in node.attrs:
-        return Element("p", {}, [node.attrs["data-bpsync-embed"]])
+    if "data-wpsync-embed" in node.attrs:
+        return Element("p", {}, [node.attrs["data-wpsync-embed"]])
     classes = node.attrs.get("class", "").split()
     if node.tag == "figure" and "wp-block-table" in classes:
         tables = [c for c in node.children if isinstance(c, Element)]

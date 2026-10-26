@@ -6,11 +6,11 @@
 
 - Profiles map one local folder to one blog, following HLSync: `create`,
   `connect`, `map`, `remove`, `root`, `profile`, and `profiles`, stored in
-  `~/.bpsync/config.json`, with current-directory inference, a profile-prefix
+  `~/.wpsync/config.json`, with current-directory inference, a profile-prefix
   override, and an Application Password read from an environment variable.
   `create` and `connect` sign in and list the blog's posts.
 - Read and write post files: Markdown under `posts/` with a YAML header.
-  BPSync rewrites its own fields canonically, keeps other header entries and
+  WPSync rewrites its own fields canonically, keeps other header entries and
   their comments byte for byte, and reports every invalid file and every post
   ID shared by two files at once.
 - Convert post content between WordPress and Markdown. Push renders plain HTML
@@ -33,8 +33,7 @@
 
 ### Changed
 
-- Rename the project from WPSync to BPSync (Blog Post Sync); the command,
-  package, and PyPI distribution are `bpsync`.
-- License BPSync under PolyForm Strict 1.0.0.
+- License WPSync under PolyForm Strict 1.0.0.
 - Derive versions from Git history like HLSync: `<major>.<work-day>.<increment>`
-  starting from `version.json`.
+  starting from `version.json`. Versions start at 2.0.1, after the 1.0.x
+  releases already published under the `wpsync` name on PyPI.

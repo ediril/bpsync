@@ -2,7 +2,7 @@ import io
 
 from wordpress_fake import FakeWordPress, add_profile, invoke
 
-from bpsync.documents import Document, Post, write_document
+from wpsync.documents import Document, Post, write_document
 
 
 class Terminal(io.StringIO):

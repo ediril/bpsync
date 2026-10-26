@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from bpsync.storage import write_text_atomic
+from wpsync.storage import write_text_atomic
 
 CONFIG_VERSION = 1
 PROFILE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -137,7 +137,7 @@ class Configuration:
 
 class ConfigurationStore:
     def __init__(self, path: Path | None = None) -> None:
-        self.path = path or Path.home() / ".bpsync" / "config.json"
+        self.path = path or Path.home() / ".wpsync" / "config.json"
 
     def load(self) -> Configuration:
         if not self.path.exists():
@@ -148,7 +148,7 @@ class ConfigurationStore:
             raise ConfigurationError(f"cannot read {self.path}: {error}") from error
         if not isinstance(document, dict) or document.get("version") != CONFIG_VERSION:
             raise ConfigurationError(
-                f"{self.path} is not a version {CONFIG_VERSION} bpsync configuration"
+                f"{self.path} is not a version {CONFIG_VERSION} wpsync configuration"
             )
         profiles = document.get("profiles", {})
         if not isinstance(profiles, dict):

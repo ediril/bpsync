@@ -1,28 +1,28 @@
-# BPSync
+# WPSync
 
-BPSync (Blog Post Sync, `bpsync`) is a command-line tool for managing blog
-posts as local Markdown files: map a folder to a blog, pull its posts, edit
-them in any editor, preview the differences, and push the changes back.
-WordPress is the first supported platform.
+WPSync (`wpsync`) is a command-line tool for managing blog posts as local
+Markdown files: map a folder to a blog, pull its posts, edit them in any
+editor, preview the differences, and push the changes back. WordPress is the
+first supported platform.
 
-BPSync is pre-alpha software. Profiles and the connection check work today;
+WPSync is pre-alpha software. Profiles and the connection check work today;
 pull, diff, and push are in progress (see `TODO.md`).
 
 ## Installation
 
-BPSync requires Python 3.11 or newer. Install it from a checkout with uv:
+WPSync requires Python 3.11 or newer. Install it from a checkout with uv:
 
 ```console
-uv tool install --editable /path/to/bpsync/app
+uv tool install --editable /path/to/wpsync/app
 ```
 
 ## Credentials
 
-BPSync signs in with a WordPress Application Password, which you create in the
+WPSync signs in with a WordPress Application Password, which you create in the
 WordPress dashboard under **Users > Profile > Application Passwords**.
 Application Passwords require the site to use HTTPS.
 
-BPSync reads the password from an environment variable and never stores it. The
+WPSync reads the password from an environment variable and never stores it. The
 variable name comes from the profile name: profile `myblog` reads
 `MYBLOG_WP_PASSWORD`. Choose a different variable with `--password-env` when
 creating the profile.
@@ -30,13 +30,13 @@ creating the profile.
 ## Profiles
 
 A profile maps one local folder to one blog. Profiles are stored in
-`~/.bpsync/config.json`. Folders may not overlap between profiles.
+`~/.wpsync/config.json`. Folders may not overlap between profiles.
 
 From the folder you want to use for the blog:
 
 ```console
 export MYBLOG_WP_PASSWORD='abcd efgh ijkl mnop qrst uvwx'
-bpsync create myblog --site https://example.com --username emrah
+wpsync create myblog --site https://example.com --username emrah
 ```
 
 `create` offers the current directory as the profile's folder; press Enter to
@@ -49,20 +49,20 @@ Commands run inside a profile's folder, or any folder below it, use that
 profile automatically. Elsewhere, put the profile name before the command:
 
 ```console
-bpsync connect           # sign in and list the blog's posts
-bpsync myblog connect    # the same, from any directory
-bpsync profiles          # list profiles; * marks the current one
-bpsync profile --details # show the current profile's settings
-bpsync root myblog       # print the profile's folder
-bpsync map --local-root /new/folder   # move the profile to another folder
-bpsync remove myblog     # remove the profile only
+wpsync connect           # sign in and list the blog's posts
+wpsync myblog connect    # the same, from any directory
+wpsync profiles          # list profiles; * marks the current one
+wpsync profile --details # show the current profile's settings
+wpsync root myblog       # print the profile's folder
+wpsync map --local-root /new/folder   # move the profile to another folder
+wpsync remove myblog     # remove the profile only
 ```
 
 `map` asks for confirmation and only changes the local folder. A different
 blog needs its own profile, because synchronization state belongs to one blog.
 `remove` deletes only the profile; local files and the blog stay unchanged.
 
-Commands may be shortened to any unique prefix, such as `bpsync conn`.
+Commands may be shortened to any unique prefix, such as `wpsync conn`.
 
 ## Post files
 
@@ -112,7 +112,7 @@ Left column.
 
 A video or other embeddable URL alone in a paragraph is embedded by WordPress.
 Content with no Markdown form, such as galleries, stays in the file as its
-exact original HTML; BPSync never drops it. When plain HTML would not survive
+exact original HTML; WPSync never drops it. When plain HTML would not survive
 Markdown unchanged, it is wrapped in a raw HTML fence, which is published
 exactly as written:
 
@@ -125,7 +125,7 @@ exactly as written:
 ````
 
 Other header entries, such as `layout:` from another tool, stay in the file
-exactly as written and are never sent to WordPress. When BPSync rewrites a file,
+exactly as written and are never sent to WordPress. When WPSync rewrites a file,
 it writes its own fields in the order above, sorts category and tag names, and
 leaves other entries and their comments unchanged. Two files with the same `id`
 are an error.
@@ -138,10 +138,10 @@ are an error.
 displays is downloaded, usually WordPress's resized `large` copy.
 
 ```console
-bpsync pull          # every post
-bpsync pull 123      # one post, by ID
-bpsync pull hello    # one post, by slug, including one not pulled yet
-bpsync pull -y       # answer yes to every question
+wpsync pull          # every post
+wpsync pull 123      # one post, by ID
+wpsync pull hello    # one post, by slug, including one not pulled yet
+wpsync pull -y       # answer yes to every question
 ```
 
 ```text
@@ -162,7 +162,7 @@ Pull never loses local work:
   a duplicate.
 - A file you deleted is not restored, and a post deleted on WordPress keeps its
   local file.
-- Header entries BPSync does not sync, such as `layout:`, are kept when a file
+- Header entries WPSync does not sync, such as `layout:`, are kept when a file
   is updated.
 
 Dates are written in the blog's time zone. Images placed inside a line of text,
@@ -174,18 +174,18 @@ Local files are the source of truth. `ls` lists the posts in the profile folder
 with their IDs and slugs, without contacting the blog:
 
 ```console
-bpsync ls
+wpsync ls
 ```
 
 `diff` shows what a push would change and anything that would stop it:
 
 ```console
-bpsync diff          # every post
-bpsync diff 123      # one post, by ID
-bpsync diff hello    # one post, by slug
-bpsync diff posts/new-idea.md   # one post, by file
-bpsync diff -a       # also list unchanged posts
-bpsync --legend      # explain the status symbols
+wpsync diff          # every post
+wpsync diff 123      # one post, by ID
+wpsync diff hello    # one post, by slug
+wpsync diff posts/new-idea.md   # one post, by file
+wpsync diff -a       # also list unchanged posts
+wpsync --legend      # explain the status symbols
 ```
 
 ```text
@@ -206,7 +206,7 @@ appear only through `pull`.
 
 ## License
 
-BPSync is source-available under the [PolyForm Strict License 1.0.0](LICENSE).
+WPSync is source-available under the [PolyForm Strict License 1.0.0](LICENSE).
 Use is free of charge for the purposes permitted by that license, including:
 
 - Any noncommercial purpose.
@@ -217,7 +217,7 @@ Use is free of charge for the purposes permitted by that license, including:
   organizations, and government institutions, regardless of funding source or
   obligations resulting from funding.
 
-This license grants no rights to modify or redistribute BPSync or create works
+This license grants no rights to modify or redistribute WPSync or create works
 based on it. The full license governs; this summary does not grant additional
 permissions.
 
@@ -225,7 +225,7 @@ Commercial use outside those permissions requires a separate paid license.
 Contact [Emrah Diril](mailto:emrah@diril.org) for pricing and a commercial
 agreement before beginning such use.
 
-BPSync is source-available, not open source.
+WPSync is source-available, not open source.
 
 ## Development
 
@@ -252,8 +252,9 @@ advance from Git history, not from the build date:
 
 Versions follow first-parent history, so commit dates must not go backwards.
 Wheels and source archives keep the computed version; installed commands do
-not use Git. Reinstall an editable checkout after committing to refresh its
-version. `bpsync --version` prints the installed version.
+not use Git. `uv sync` rebuilds the development install when `version.json` or
+the current commit changes; a copy installed with `uv tool install` keeps its
+version until it is reinstalled. `wpsync --version` prints the installed version.
 
 ### Releasing to PyPI
 
@@ -274,8 +275,8 @@ if needed. Do not store the token in the repository.
    helpers in `scripts/helpers/`, it checks the release identity, runs lint and
    tests, builds the wheel and source archive with `uv build`, checks their
    metadata with Twine, installs the wheel into a clean environment to confirm
-   `bpsync --version`, and uploads both artifacts. Prepared artifacts are kept
-   in `dist/bpsync/<version>/` and reused if the script runs again for the same
+   `wpsync --version`, and uploads both artifacts. Prepared artifacts are kept
+   in `dist/wpsync/<version>/` and reused if the script runs again for the same
    version.
 
    To prepare and validate artifacts without publishing, run
@@ -285,7 +286,7 @@ if needed. Do not store the token in the repository.
    GitHub Release. PyPI does not require a tag, but it records which source was
    published.
 4. Install the published version in a clean environment and run
-   `bpsync --version` before announcing it.
+   `wpsync --version` before announcing it.
 
 PyPI never lets a published version be replaced. If publication fails after
 PyPI accepted either artifact, make another commit (an empty commit is enough)

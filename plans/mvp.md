@@ -1,18 +1,18 @@
-# BPSync — MVP
+# WPSync — MVP
 
 ## Purpose
 
-BPSync is a local-first CLI tool for managing WordPress blog posts as Markdown files, without using the WordPress editor.
+WPSync is a local-first CLI tool for managing WordPress blog posts as Markdown files, without using the WordPress editor.
 
 It follows the same UX philosophy as HLSync: simple commands, predictable synchronization, and explicit control over changes.
 
 ## Core workflow
 
 ```bash
-bpsync init    # Connect a local directory to a WordPress blog
-bpsync pull    # Import or update local posts from WordPress
-bpsync diff    # Preview differences between local and remote
-bpsync push    # Publish local changes to WordPress
+wpsync init    # Connect a local directory to a WordPress blog
+wpsync pull    # Import or update local posts from WordPress
+wpsync diff    # Preview differences between local and remote
+wpsync push    # Publish local changes to WordPress
 ```
 
 - **Local-first:** Users write and edit Markdown files in any editor.

@@ -3,7 +3,7 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "bpsync"
+name = "wpsync"
 dynamic = ["version"]
 description = "Manage blog posts as local Markdown files"
 readme = "README.md"
@@ -26,7 +26,7 @@ classifiers = [
 ]
 
 [project.scripts]
-bpsync = "bpsync.cli:main"
+wpsync = "wpsync.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.12,<1", "twine>=6,<7"]
@@ -38,11 +38,11 @@ expression = "release_version()"
 
 # Twine and PyPI accept core metadata up to 2.4, which License-Expression needs.
 [tool.hatch.build.targets.wheel]
-packages = ["src/bpsync"]
+packages = ["src/wpsync"]
 core-metadata-version = "2.4"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/bpsync", "build_backend", "version.json", "README.md", "LICENSE"]
+include = ["src/wpsync", "build_backend", "version.json", "README.md", "LICENSE"]
 core-metadata-version = "2.4"
 
 [tool.pytest.ini_options]
@@ -56,3 +56,11 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.uv]
+# The version comes from version.json and Git history, so rebuild when they change.
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "version.json" },
+  { git = { commit = true } },
+]

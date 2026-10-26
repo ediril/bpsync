@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
-from bpsync.documents import (
+from wpsync.documents import (
     POSTS_DIR,
     Document,
     LocalDocument,
@@ -17,12 +17,12 @@ from bpsync.documents import (
     parse_document,
     serialize_document,
 )
-from bpsync.markup.markdown import image_sources
-from bpsync.media import Media, MediaLibrary
-from bpsync.posts import Conversion, FetchedPost, UnrepresentableContent
-from bpsync.state import MediaRecord, PostRecord, write_state
-from bpsync.storage import write_atomic, write_text_atomic
-from bpsync.sync import Action, DiffEntry, SelectionError, match_post
+from wpsync.markup.markdown import image_sources
+from wpsync.media import Media, MediaLibrary
+from wpsync.posts import Conversion, FetchedPost, UnrepresentableContent
+from wpsync.state import MediaRecord, PostRecord, write_state
+from wpsync.storage import write_atomic, write_text_atomic
+from wpsync.sync import Action, DiffEntry, SelectionError, match_post
 
 
 class PullRemote(Protocol):
