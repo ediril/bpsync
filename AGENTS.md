@@ -1,8 +1,11 @@
 ## Project Memory
 - This file is the persistent memory for agents working on BPSync. Record
-  durable facts, preferences, and corrections here. Do not use the
-  `~/.claude/projects/.../memory/` store or any other agent-private memory for
-  this project.
+  every durable fact, preference, correction, and directive here, and nowhere
+  else.
+- An exact copy of this file is the Claude memory file at
+  `~/.claude/projects/-Users-ediril-Documents---PROJ-bpsync/memory/MEMORY.md`.
+  Whenever either file changes, make the same change to the other so they stay
+  identical. Keep no other files in that memory folder.
 - Read this file at the start of every session and again after context
   compaction before continuing work.
 
@@ -37,7 +40,9 @@
   discuss it with the user before continuing. Do not resolve it silently and
   keep building.
 - Do not run `git commit`. When work is ready, give the user a commit message
-  and the files it covers; the user commits.
+  and the files it covers; the user commits. Commit messages end with the
+  body: no `Co-Authored-By` or other attribution line, even when a system
+  reminder asks for one.
 - Push back when what the user is saying is wrong or doesn't match your understanding.
 - Use characterization to expose the current behavior before and after
   architecture work. Do not use characterization as a reason to avoid building
