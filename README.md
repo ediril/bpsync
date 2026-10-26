@@ -203,3 +203,39 @@ Versions follow first-parent history, so commit dates must not go backwards.
 Wheels and source archives keep the computed version; installed commands do
 not use Git. Reinstall an editable checkout after committing to refresh its
 version. `bpsync --version` prints the installed version.
+
+### Releasing to PyPI
+
+Use a PyPI account with two-factor authentication and an API token. Twine reads
+credentials from `~/.pypirc` or `TWINE_USERNAME`/`TWINE_PASSWORD` and prompts
+if needed. Do not store the token in the repository.
+
+1. Commit everything to release. Preparation refuses a working tree with
+   uncommitted changes, because the version describes the last commit.
+2. With development dependencies installed (`uv sync`), run:
+
+   ```console
+   ./scripts/publish.sh
+   ```
+
+   The script uses the repository's `.venv/bin/python` when available,
+   otherwise `python3`; set `PYTHON` to select another interpreter. Through the
+   helpers in `scripts/helpers/`, it checks the release identity, runs lint and
+   tests, builds the wheel and source archive with `uv build`, checks their
+   metadata with Twine, installs the wheel into a clean environment to confirm
+   `bpsync --version`, and uploads both artifacts. Prepared artifacts are kept
+   in `dist/bpsync/<version>/` and reused if the script runs again for the same
+   version.
+
+   To prepare and validate artifacts without publishing, run
+   `./scripts/publish.sh --prepare`.
+
+3. Tag the release commit as `v<version>`, push the tag, and create a matching
+   GitHub Release. PyPI does not require a tag, but it records which source was
+   published.
+4. Install the published version in a clean environment and run
+   `bpsync --version` before announcing it.
+
+PyPI never lets a published version be replaced. If publication fails after
+PyPI accepted either artifact, make another commit (an empty commit is enough)
+and publish the new version.
