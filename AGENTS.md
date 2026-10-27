@@ -13,11 +13,11 @@
 - WPSync is a local-first CLI that manages blog posts as Markdown files,
   starting with WordPress. `plans/mvp.md` defines the MVP; `TODO.md` is the
   ordered work queue.
-- The PyPI distribution, command, and Python package are all `wpsync`. The
-  `wpsync` name on PyPI belongs to another project whose owner may transfer it;
-  its published 1.0.x versions are why WPSync's versions start at 2.0.1. The
-  `rename` branch keeps the project as BPSync (Blog Post Sync) in case the
-  transfer does not happen.
+- The PyPI distribution, command, and Python package are all `wpsync`. A
+  previous `wpsync` project on PyPI was deleted by its owner so WPSync could
+  take the name. PyPI never reuses its 1.0.0 and 1.0.1 filenames, so the
+  history starts at 1.0.1 and releases begin at 1.1. The `rename` branch keeps
+  the project as BPSync (Blog Post Sync) until the first upload claims the name.
 - WordPress is the only MVP platform, but other blogging platforms are likely
   later. Keep platform-specific code (REST API, HTML conventions) inside
   `src/wpsync/wordpress/`; the sync engine, local document format, and project

@@ -35,5 +35,6 @@
 
 - License WPSync under PolyForm Strict 1.0.0.
 - Derive versions from Git history like HLSync: `<major>.<work-day>.<increment>`
-  starting from `version.json`. Versions start at 2.0.1, after the 1.0.x
-  releases already published under the `wpsync` name on PyPI.
+  starting from `version.json`. The history starts at 1.0.1, so
+  releases begin at 1.1 and follow the 1.0.x releases a previous `wpsync`
+  project published on PyPI.
