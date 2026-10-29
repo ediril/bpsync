@@ -43,7 +43,7 @@ wpsync init
 `create` checks that the address is a WordPress site and saves the profile
 without signing in. It offers the current directory as the profile's folder;
 press Enter to accept it, or decline to name another. Use `--local-root PATH`
-to name it directly, and omit `--username` to be prompted. The username is
+to name it directly, and omit `-u`/`--username` to be prompted. The username is
 your WordPress login name or email address. A blog installed in a subfolder,
 such as `https://example.com/blog`, works like any other.
 

@@ -177,7 +177,9 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument(
         "--site", required=True, help="blog address, such as https://example.com"
     )
-    create.add_argument("--username", help="WordPress username; prompted when omitted")
+    create.add_argument(
+        "-u", "--username", help="WordPress username; prompted when omitted"
+    )
     create.add_argument(
         "--password-env",
         metavar="NAME",
