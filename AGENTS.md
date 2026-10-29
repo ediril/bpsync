@@ -2,9 +2,9 @@
 - This file is the persistent memory for agents working on WPSync. Record
   every durable fact, preference, correction, and directive here, and nowhere
   else.
-- An exact copy of this file is the Claude memory file at
-  `~/.claude/projects/-Users-ediril-Documents---PROJ-bpsync/memory/MEMORY.md`.
-  Whenever either file changes, make the same change to the other so they stay
+- An exact copy of this file is this project's Claude memory file, `MEMORY.md`
+  in the memory folder Claude Code assigns to the project folder. Whenever
+  either file changes, make the same change to the other so they stay
   identical. Keep no other files in that memory folder.
 - Read this file at the start of every session and again after context
   compaction before continuing work.
