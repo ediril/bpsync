@@ -7,6 +7,7 @@ import httpx
 
 from wpsync.cli import run
 from wpsync.config import Profile
+from wpsync.state import create_state
 
 SITE = "https://blog.test"
 PASSWORD = "abcd efgh ijkl mnop"
@@ -15,8 +16,11 @@ PASSWORD = "abcd efgh ijkl mnop"
 class FakeWordPress:
     """Serves the REST API responses wpsync reads, as WordPress shapes them."""
 
-    def __init__(self, post_count=3, rest_route=False, can_edit=True):
+    def __init__(
+        self, post_count=3, rest_route=False, can_edit=True, advertises_api=True
+    ):
         self.rest_route = rest_route
+        self.advertises_api = advertises_api
         self.can_edit = can_edit
         self.requests = []
         self.posts = [
@@ -55,9 +59,10 @@ class FakeWordPress:
         if request.url.path.startswith("/wp-content/uploads/"):
             return httpx.Response(200, content=b"image:" + request.url.path.encode())
         route = self.route(request)
-        if route is None:
+        if route is None or not self.advertises_api:
             link = f'<{self.api_root}>; rel="https://api.w.org/"'
-            return httpx.Response(200, headers={"Link": link}, text="<html></html>")
+            headers = {"Link": link} if self.advertises_api else {}
+            return httpx.Response(200, headers=headers, text="<html></html>")
         expected = "Basic " + base64.b64encode(f"emrah:{PASSWORD}".encode()).decode()
         if request.headers.get("Authorization") != expected:
             return httpx.Response(
@@ -133,3 +138,9 @@ def add_profile(store, name, root):
         ),
     )
     store.save(configuration)
+
+
+def initialized(store, root):
+    """A profile whose folder is initialized, as init leaves it before pulling."""
+    add_profile(store, "myblog", root)
+    create_state(root.resolve(), f"{SITE}/wp-json/")

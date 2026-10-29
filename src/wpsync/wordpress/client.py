@@ -49,10 +49,7 @@ def discover_api_root(site: str, transport: httpx.BaseTransport | None = None) -
         response = request(http, "GET", site)
     link = response.links.get(API_LINK_RELATION)
     if link is None or not link.get("url"):
-        raise WordPressError(
-            f"{site} does not advertise a WordPress REST API "
-            f"(HTTP {response.status_code}, no '{API_LINK_RELATION}' link)"
-        )
+        raise WordPressError(f"{site} is not a WordPress site (no REST API link)")
     return link["url"]
 
 

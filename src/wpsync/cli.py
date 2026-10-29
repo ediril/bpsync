@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TextIO
@@ -22,16 +21,16 @@ from wpsync.config import (
     validate_profile_name,
 )
 from wpsync.documents import DocumentError, LocalDocument, scan_documents
-from wpsync.posts import PostStatus, PostSummary, RemoteState
+from wpsync.posts import PostSummary, RemoteState
 from wpsync.pull import Puller
-from wpsync.state import StateError, read_media, read_records
+from wpsync.state import StateError, create_state, read_media, read_records
 from wpsync.sync import Action, DiffEntry, SelectionError, compare, select
 from wpsync.wordpress.client import WordPressClient, WordPressError, discover_api_root
 from wpsync.wordpress.remote import WordPressRemote
 
 COMMANDS = (
     "create",
-    "connect",
+    "init",
     "map",
     "remove",
     "root",
@@ -42,7 +41,7 @@ COMMANDS = (
     "pull",
 )
 PROFILE_AWARE_COMMANDS = frozenset(
-    {"connect", "map", "remove", "root", "profile", "ls", "diff", "pull"}
+    {"init", "map", "remove", "root", "profile", "ls", "diff", "pull"}
 )
 RESET = "\033[0m"
 MARKER_COLORS = {
@@ -103,11 +102,7 @@ class _Session:
     def password(self, profile: Profile) -> str:
         password = self.environ.get(profile.password_env)
         if not password:
-            raise ConfigurationError(
-                f"set {profile.password_env} to an Application Password for "
-                f"'{profile.username}' on {profile.site} (create one in WordPress "
-                "under Users > Profile > Application Passwords)"
-            )
+            raise ConfigurationError(f"{profile.password_env} is not set")
         return password
 
 
@@ -174,9 +169,8 @@ def build_parser() -> argparse.ArgumentParser:
         "create",
         help="create a profile that maps a local folder to a blog",
         description=(
-            "Create a profile, verify the Application Password from its "
-            "environment variable, and list the blog's posts. Without "
-            "--local-root, offer the current directory."
+            "Create a profile for a WordPress site without signing in. Without "
+            "--local-root, offer the current directory. Run init next."
         ),
     )
     create.add_argument("profile_name", metavar="PROFILE", help="new profile name")
@@ -193,12 +187,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--local-root", metavar="PATH", help="local folder for this blog"
     )
 
-    connect = subparsers.add_parser(
-        "connect",
-        help="verify a profile's credentials and list the blog's posts",
-        usage="wpsync connect [PROFILE]\n       wpsync PROFILE connect",
+    init = subparsers.add_parser(
+        "init",
+        help="sign in and download the blog's posts and images",
+        usage="wpsync init [PROFILE] [-y]\n       wpsync PROFILE init [-y]",
+        description=(
+            "Sign in, then pull every post and its images into the profile's "
+            "folder for the first time. diff, pull, and push need it."
+        ),
     )
-    _profile_argument(connect)
+    _profile_argument(init)
+    init.add_argument(
+        "-y", "--yes", action="store_true", help="answer yes to every question"
+    )
 
     map_parser = subparsers.add_parser(
         "map",
@@ -331,43 +332,19 @@ def _normalize_site(site: str) -> str:
     return site
 
 
-def _connection_report(profile: Profile, session: _Session) -> str:
-    with WordPressClient(
-        profile.api_root, profile.username, session.password(profile), session.transport
-    ) as client:
-        user = client.current_user()
-        capabilities = user.get("capabilities", {})
-        if not capabilities.get("edit_posts"):
-            raise WordPressError(
-                f"'{profile.username}' cannot edit posts on {profile.site}"
-            )
-        posts = client.post_summaries()
+def _sign_in(client: WordPressClient, profile: Profile) -> str:
+    user = client.current_user()
+    capabilities = user.get("capabilities", {})
+    if not capabilities.get("edit_posts"):
+        raise WordPressError(
+            f"'{profile.username}' cannot edit posts on {profile.site}"
+        )
     roles = ", ".join(user.get("roles", [])) or "no role"
-    lines = [f"Connected to {profile.site} as '{profile.username}' ({roles})."]
+    lines = [f"Signed in to {profile.site} as '{profile.username}' ({roles})."]
     if not capabilities.get("unfiltered_html"):
         lines.append(
             "Note: this account lacks unfiltered_html, so WordPress removes "
             "markup such as iframes and scripts from saved posts."
-        )
-    lines.append(_post_listing(posts))
-    return "\n".join(lines)
-
-
-def _post_listing(posts: list[PostSummary]) -> str:
-    if not posts:
-        return "The blog has no posts."
-    counts = Counter(post.status for post in posts)
-    breakdown = ", ".join(
-        f"{counts[status]} {status}" for status in PostStatus if counts[status]
-    )
-    noun = "post" if len(posts) == 1 else "posts"
-    lines = [f"{len(posts)} {noun}: {breakdown}", ""]
-    id_width = max(len(post.id) for post in posts)
-    status_width = max(len(post.status) for post in posts)
-    for post in sorted(posts, key=lambda post: (post.date, int(post.id)), reverse=True):
-        lines.append(
-            f"  {post.id:>{id_width}}  {post.status:<{status_width}}  "
-            f"{post.date:%Y-%m-%d}  {post.title or '(no title)'}"
         )
     return "\n".join(lines)
 
@@ -378,17 +355,12 @@ def _create(arguments: argparse.Namespace, session: _Session) -> str:
     if name in configuration.profiles:
         raise ConfigurationError(f"profile '{name}' already exists")
     site = _normalize_site(arguments.site)
+    api_root = discover_api_root(site, session.transport)
     password_env = (
         validate_environment_name(arguments.password_env)
         if arguments.password_env
         else default_password_env(name)
     )
-    if not session.environ.get(password_env):
-        raise ConfigurationError(
-            f"set {password_env} to an Application Password for {site} (create "
-            "one in WordPress under Users > Profile > Application Passwords), "
-            "then run create again"
-        )
     username = arguments.username or session.ask("WordPress username: ")
     if not username:
         raise ConfigurationError("a WordPress username is required")
@@ -406,22 +378,12 @@ def _create(arguments: argparse.Namespace, session: _Session) -> str:
                 raise ConfigurationError("a local folder is required; use --local-root")
             local_root = canonical_local_root(supplied)
     configuration.check_root(name, local_root)
-    profile = Profile(
-        site=site,
-        api_root=discover_api_root(site, session.transport),
-        username=username,
-        password_env=password_env,
-        local_root=local_root,
-    )
-    configuration.add(name, profile)
-    report = _connection_report(profile, session)
+    configuration.add(name, Profile(site, api_root, username, password_env, local_root))
     session.store.save(configuration)
-    return f"Created profile '{name}'.\nMapped '{local_root}' to {site}.\n{report}"
-
-
-def _connect(arguments: argparse.Namespace, session: _Session) -> str:
-    _, profile = _resolve_profile(arguments, session.store.load())
-    return _connection_report(profile, session)
+    step = "run wpsync init"
+    if not session.environ.get(password_env):
+        step = f"set {password_env} to an Application Password, then {step}"
+    return f"Created profile '{name}': '{local_root}' maps to {site}.\nNext: {step}."
 
 
 def _map(arguments: argparse.Namespace, session: _Session) -> str:
@@ -553,7 +515,7 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
     profile, _ = _profile_root(arguments, session)
     documents = scan_documents(profile.local_root)
     if not documents:
-        return "No posts. Run wpsync pull, or add Markdown files under posts/."
+        return "No posts. Run wpsync init, or add Markdown files under posts/."
 
     def order(item):  # noqa: ANN001, ANN202
         post_id = item.document.post_id
@@ -641,14 +603,32 @@ def _pull_target(
 
 def _pull(arguments: argparse.Namespace, session: _Session) -> str:
     profile, base = _profile_root(arguments, session)
+    return _synchronize(profile, base, arguments.post, arguments.yes, session)
+
+
+def _init(arguments: argparse.Namespace, session: _Session) -> str:
+    profile, base = _profile_root(arguments, session)
+    return _synchronize(profile, base, None, arguments.yes, session, first=True)
+
+
+def _synchronize(
+    profile: Profile,
+    base: Path,
+    selector: str | None,
+    yes: bool,
+    session: _Session,
+    *,
+    first: bool = False,
+) -> str:
+    """Pull from the blog; the first pull signs in and initializes the folder."""
     root = profile.local_root
     documents = scan_documents(root)
-    ids, slug = _pull_target(arguments.post, documents, root, base)
+    ids, slug = _pull_target(selector, documents, root, base)
     color = _use_color(session.stdout, session.environ)
 
     def confirm(question: str) -> bool:
         # Without a terminal nobody can answer, so the question counts as No.
-        if arguments.yes:
+        if yes:
             return True
         interactive = getattr(session.stdin, "isatty", lambda: False)()
         return interactive and session.confirm(f"{question} [y/N] ", default=False)
@@ -661,6 +641,10 @@ def _pull(arguments: argparse.Namespace, session: _Session) -> str:
     )
     remote = WordPressRemote(client, session.transport)
     try:
+        if first:
+            signed_in = _sign_in(client, profile)
+            create_state(root, profile.api_root)
+            print(signed_in, file=session.stdout, flush=True)
         puller = Puller(
             root,
             profile.api_root,
@@ -676,14 +660,14 @@ def _pull(arguments: argparse.Namespace, session: _Session) -> str:
         remote.close()
         client.http.close()
     summary = result.summary()
-    if result.skipped and not arguments.yes:
-        summary += " Rerun with --yes to accept the skipped changes."
+    if result.skipped and not yes:
+        summary += " Rerun pull with --yes to accept the skipped changes."
     return summary
 
 
 HANDLERS = {
     "create": _create,
-    "connect": _connect,
+    "init": _init,
     "map": _map,
     "remove": _remove,
     "root": _root,

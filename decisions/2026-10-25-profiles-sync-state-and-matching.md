@@ -20,9 +20,13 @@ variable. The variable name defaults to one derived from the profile name, such
 as `MYBLOG_WP_PASSWORD`, and can be overridden when the profile is created.
 Credential values are never stored.
 
-`create` and `connect` verify the credentials and list the existing posts with
-a lightweight request (ID, title, slug, status, modification time). They do not
-download post content or media.
+`create` only checks that the site advertises a WordPress REST API and saves
+the profile; it needs no credentials. `init` signs in, checks that the account
+can edit posts, creates the folder's sync state, and runs the first pull of
+every post and its images. `diff`, `pull`, and `push` refuse a folder without
+sync state, so nothing is pushed to a blog that has not been pulled first. The
+state is created only after sign-in succeeds, so a failed `init` can simply be
+rerun; an interrupted first pull is finished by `pull`.
 
 ### Sync state
 
@@ -111,7 +115,7 @@ would otherwise ask.
 ## Intentionally excluded
 
 - Storing credentials or using the OS keychain for the MVP.
-- Downloading post content or media during `create` or `connect`.
+- Contacting the blog with credentials during `create`.
 - Detecting WordPress-side changes to posts that are unchanged locally,
   except through `pull`.
 - Selecting several posts in one command; a command acts on one post or all.

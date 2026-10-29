@@ -74,28 +74,34 @@ def _check_site(connection: sqlite3.Connection, path: Path, api_root: str) -> No
         )
 
 
-@contextmanager
-def _read_only(root: Path, api_root: str) -> Iterator[sqlite3.Connection | None]:
+def _open(root: Path, api_root: str, mode: str) -> sqlite3.Connection:
     path = root / STATE_PATH
     if not path.exists():
-        yield None
-        return
+        raise StateError(f"{root} is not initialized; run wpsync init")
+    connection = sqlite3.connect(f"{path.as_uri()}?mode={mode}", uri=True)
     try:
-        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        _check_site(connection, path, api_root)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
+@contextmanager
+def _read_only(root: Path, api_root: str) -> Iterator[sqlite3.Connection]:
+    try:
+        connection = _open(root, api_root, "ro")
         try:
-            _check_site(connection, path, api_root)
             yield connection
         finally:
             connection.close()
     except sqlite3.Error as error:
-        raise StateError(f"cannot read {path}: {error}") from error
+        raise StateError(f"cannot read {root / STATE_PATH}: {error}") from error
 
 
 def read_records(root: Path, api_root: str) -> dict[str, PostRecord]:
     """Read every post record without creating or changing the database."""
     with _read_only(root, api_root) as connection:
-        if connection is None:
-            return {}
         rows = connection.execute(
             "SELECT post_id, path, body_checksum, fields_checksum, "
             "remote_fingerprint, remote_format FROM posts"
@@ -115,8 +121,6 @@ def read_records(root: Path, api_root: str) -> dict[str, PostRecord]:
 
 def read_media(root: Path, api_root: str) -> list[MediaRecord]:
     with _read_only(root, api_root) as connection:
-        if connection is None:
-            return []
         rows = connection.execute(
             "SELECT path, checksum, media_id, url, size FROM media"
         ).fetchall()
@@ -155,23 +159,38 @@ class StateWriter:
         )
 
 
-@contextmanager
-def write_state(root: Path, api_root: str) -> Iterator[StateWriter]:
-    """Open the database for one transaction, creating it for a new folder."""
+def create_state(root: Path, api_root: str) -> None:
+    """Create the database that marks the folder as initialized for the blog."""
     path = root / STATE_PATH
     path.parent.mkdir(exist_ok=True)
     try:
+        with path.open("x"):
+            pass
+    except FileExistsError:
+        raise StateError(f"{root} is already initialized; run wpsync pull") from None
+    try:
         connection = sqlite3.connect(path)
         try:
-            if connection.execute("PRAGMA user_version").fetchone()[0] == 0:
-                with connection:
-                    connection.executescript(SCHEMA)
-                    connection.execute("INSERT INTO site VALUES (1, ?)", (api_root,))
-                    connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            _check_site(connection, path, api_root)
+            with connection:
+                connection.executescript(SCHEMA)
+                connection.execute("INSERT INTO site VALUES (1, ?)", (api_root,))
+                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        finally:
+            connection.close()
+    except sqlite3.Error as error:
+        path.unlink()
+        raise StateError(f"cannot create {path}: {error}") from error
+
+
+@contextmanager
+def write_state(root: Path, api_root: str) -> Iterator[StateWriter]:
+    """Open the database for one transaction."""
+    try:
+        connection = _open(root, api_root, "rw")
+        try:
             with connection:
                 yield StateWriter(connection)
         finally:
             connection.close()
     except sqlite3.Error as error:
-        raise StateError(f"cannot update {path}: {error}") from error
+        raise StateError(f"cannot update {root / STATE_PATH}: {error}") from error
