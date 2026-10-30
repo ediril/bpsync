@@ -42,6 +42,7 @@ COMMANDS = (
 PROFILE_AWARE_COMMANDS = frozenset(
     {"map", "remove", "root", "profile", "ls", "diff", "pull"}
 )
+NO_POSTS = "No posts here yet. Run wpsync pull, or add Markdown files under posts/."
 RESET = "\033[0m"
 MARKER_COLORS = {
     "+": "\033[38;5;82m",
@@ -508,7 +509,7 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
     profile, _ = _profile_root(arguments, session)
     documents = scan_documents(profile.local_root)
     if not documents:
-        return "No posts. Run wpsync pull, or add Markdown files under posts/."
+        return NO_POSTS
 
     def order(item):  # noqa: ANN001, ANN202
         post_id = item.document.post_id
@@ -551,6 +552,8 @@ def _diff(arguments: argparse.Namespace, session: _Session) -> str:
         result = compare(selection, remote)
     finally:
         remote.close()
+    if not result.entries:
+        return NO_POSTS
     color = _use_color(session.stdout, session.environ)
     shown = [
         e for e in result.entries if arguments.all or e.action is not Action.UNCHANGED

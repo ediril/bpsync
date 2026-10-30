@@ -38,6 +38,17 @@ def new_post(root, name, **fields):
     write_document(root / "posts" / name, Document(None, Post(**fields)))
 
 
+def test_diff_in_an_empty_folder_says_there_are_no_posts(tmp_path, store):
+    add_profile(store, "myblog", tmp_path)
+
+    status, output, _ = invoke(["myblog", "diff"], store, password=None)
+
+    assert (status, output) == (
+        0,
+        "No posts here yet. Run wpsync pull, or add Markdown files under posts/.\n",
+    )
+
+
 def test_diff_without_local_changes_never_contacts_the_blog(tmp_path, store):
     wordpress = FakeWordPress()
     add_profile(store, "myblog", tmp_path)
