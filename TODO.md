@@ -6,7 +6,7 @@
   push would make, comparing the file with the current post converted to
   Markdown.
 - [ ] Remote deletion command that moves a post to the WordPress trash.
-- [ ] Characterize against the user's real blogs: `create` and `init`
+- [ ] Characterize against the user's real blogs: `create` and first-pull
   sign-in, read-only pull and diff first, then push to drafts. Confirm `wpautop` handling, oEmbed URLs, and the
   HTML filter for users without `unfiltered_html`.
 - [ ] README: installation, profiles, the sync workflow, prompts, and known

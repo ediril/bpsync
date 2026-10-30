@@ -23,14 +23,13 @@ from wpsync.config import (
 from wpsync.documents import DocumentError, LocalDocument, scan_documents
 from wpsync.posts import PostSummary, RemoteState
 from wpsync.pull import Puller
-from wpsync.state import StateError, create_state, read_media, read_records
+from wpsync.state import StateError, read_media, read_records
 from wpsync.sync import Action, DiffEntry, SelectionError, compare, select
 from wpsync.wordpress.client import WordPressClient, WordPressError, discover_api_root
 from wpsync.wordpress.remote import WordPressRemote
 
 COMMANDS = (
     "create",
-    "init",
     "map",
     "remove",
     "root",
@@ -41,7 +40,7 @@ COMMANDS = (
     "pull",
 )
 PROFILE_AWARE_COMMANDS = frozenset(
-    {"init", "map", "remove", "root", "profile", "ls", "diff", "pull"}
+    {"map", "remove", "root", "profile", "ls", "diff", "pull"}
 )
 RESET = "\033[0m"
 MARKER_COLORS = {
@@ -170,7 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="create a profile that maps a local folder to a blog",
         description=(
             "Create a profile for a WordPress site without signing in. Without "
-            "--local-root, offer the current directory. Run init next."
+            "--local-root, offer the current directory. Pull next."
         ),
     )
     create.add_argument("profile_name", metavar="PROFILE", help="new profile name")
@@ -187,20 +186,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     create.add_argument(
         "--local-root", metavar="PATH", help="local folder for this blog"
-    )
-
-    init = subparsers.add_parser(
-        "init",
-        help="sign in and download the blog's posts and images",
-        usage="wpsync init [PROFILE] [-y]\n       wpsync PROFILE init [-y]",
-        description=(
-            "Sign in, then pull every post and its images into the profile's "
-            "folder for the first time. diff, pull, and push need it."
-        ),
-    )
-    _profile_argument(init)
-    init.add_argument(
-        "-y", "--yes", action="store_true", help="answer yes to every question"
     )
 
     map_parser = subparsers.add_parser(
@@ -334,7 +319,8 @@ def _normalize_site(site: str) -> str:
     return site
 
 
-def _sign_in(client: WordPressClient, profile: Profile) -> str:
+def _sign_in(client: WordPressClient, profile: Profile) -> list[str]:
+    """Check the account can sync, and describe what limits it."""
     user = client.current_user()
     capabilities = user.get("capabilities", {})
     if not capabilities.get("edit_posts"):
@@ -343,12 +329,17 @@ def _sign_in(client: WordPressClient, profile: Profile) -> str:
         )
     roles = ", ".join(user.get("roles", [])) or "no role"
     lines = [f"Signed in to {profile.site} as '{profile.username}' ({roles})."]
+    if not capabilities.get("edit_others_posts"):
+        lines.append(
+            "Note: this account can edit only its own posts, so posts by other "
+            "authors are not pulled."
+        )
     if not capabilities.get("unfiltered_html"):
         lines.append(
             "Note: this account lacks unfiltered_html, so WordPress removes "
             "markup such as iframes and scripts from saved posts."
         )
-    return "\n".join(lines)
+    return lines
 
 
 def _create(arguments: argparse.Namespace, session: _Session) -> str:
@@ -382,7 +373,7 @@ def _create(arguments: argparse.Namespace, session: _Session) -> str:
     configuration.check_root(name, local_root)
     configuration.add(name, Profile(site, api_root, username, password_env, local_root))
     session.store.save(configuration)
-    step = "run wpsync init"
+    step = "run wpsync pull"
     if not session.environ.get(password_env):
         step = f"set {password_env} to an Application Password, then {step}"
     return f"Created profile '{name}': '{local_root}' maps to {site}.\nNext: {step}."
@@ -517,7 +508,7 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
     profile, _ = _profile_root(arguments, session)
     documents = scan_documents(profile.local_root)
     if not documents:
-        return "No posts. Run wpsync init, or add Markdown files under posts/."
+        return "No posts. Run wpsync pull, or add Markdown files under posts/."
 
     def order(item):  # noqa: ANN001, ANN202
         post_id = item.document.post_id
@@ -605,27 +596,11 @@ def _pull_target(
 
 def _pull(arguments: argparse.Namespace, session: _Session) -> str:
     profile, base = _profile_root(arguments, session)
-    return _synchronize(profile, base, arguments.post, arguments.yes, session)
-
-
-def _init(arguments: argparse.Namespace, session: _Session) -> str:
-    profile, base = _profile_root(arguments, session)
-    return _synchronize(profile, base, None, arguments.yes, session, first=True)
-
-
-def _synchronize(
-    profile: Profile,
-    base: Path,
-    selector: str | None,
-    yes: bool,
-    session: _Session,
-    *,
-    first: bool = False,
-) -> str:
-    """Pull from the blog; the first pull signs in and initializes the folder."""
     root = profile.local_root
+    yes = arguments.yes
     documents = scan_documents(root)
-    ids, slug = _pull_target(selector, documents, root, base)
+    ids, slug = _pull_target(arguments.post, documents, root, base)
+    records = read_records(root, profile.api_root)
     color = _use_color(session.stdout, session.environ)
 
     def confirm(question: str) -> bool:
@@ -643,16 +618,16 @@ def _synchronize(
     )
     remote = WordPressRemote(client, session.transport)
     try:
-        if first:
-            signed_in = _sign_in(client, profile)
-            create_state(root, profile.api_root)
-            print(signed_in, file=session.stdout, flush=True)
+        account = _sign_in(client, profile)
+        # Until something is pulled, say who signed in and what limits the account.
+        if not records:
+            print("\n".join(account), file=session.stdout, flush=True)
         puller = Puller(
             root,
             profile.api_root,
             remote,
             documents,
-            read_records(root, profile.api_root),
+            records,
             read_media(root, profile.api_root),
             confirm,
             report,
@@ -663,13 +638,12 @@ def _synchronize(
         client.http.close()
     summary = result.summary()
     if result.skipped and not yes:
-        summary += " Rerun pull with --yes to accept the skipped changes."
+        summary += " Rerun with --yes to accept the skipped changes."
     return summary
 
 
 HANDLERS = {
     "create": _create,
-    "init": _init,
     "map": _map,
     "remove": _remove,
     "root": _root,

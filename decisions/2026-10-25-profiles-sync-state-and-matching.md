@@ -21,12 +21,12 @@ as `MYBLOG_WP_PASSWORD`, and can be overridden when the profile is created.
 Credential values are never stored.
 
 `create` only checks that the site advertises a WordPress REST API and saves
-the profile; it needs no credentials. `init` signs in, checks that the account
-can edit posts, creates the folder's sync state, and runs the first pull of
-every post and its images. `diff`, `pull`, and `push` refuse a folder without
-sync state, so nothing is pushed to a blog that has not been pulled first. The
-state is created only after sign-in succeeds, so a failed `init` can simply be
-rerun; an interrupted first pull is finished by `pull`.
+the profile; it needs no credentials. `pull` signs in and checks that the
+account can edit posts. Until something has been pulled, it also reports
+limits that would make a pull look incomplete, such as an account that can edit
+only its own posts. No setup step separates `create` from the first `pull` or
+`push`: the first command that synchronizes a post creates the sync state, and
+push matching (below) keeps a push without a prior pull safe.
 
 ### Sync state
 
@@ -63,17 +63,22 @@ ID, slug, or file path.
 
 ### Matching
 
-A file without a post ID is matched against remote posts by title and slug at
-push time:
+Creating a post through the REST API never overwrites one: WordPress gives a
+new post with a taken slug a different slug (`hello-world-2`). Only an update,
+which names a post ID, changes an existing post. A file without a post ID is
+checked against remote posts at push time:
 
-- Title and slug identify the same post, or only one of them matches a post:
-  ask whether to update that post, naming what matched.
-- The title matches several posts, or title and slug identify different posts:
-  list the candidates and stop.
+- Its slug belongs to a post: ask whether to update that post, naming it.
+  Declining stops; push does not create a post whose slug WordPress would
+  change.
+- Only its title matches one or more posts: ask whether to create another post
+  with the same title. Titles need not be unique.
 - Nothing matches: create a new post.
 
-A confirmed match writes the post ID into the file's frontmatter. A first pull
-is not required before push; matching prevents duplicate posts.
+A confirmed match writes the post ID into the file's frontmatter. A file whose
+post ID this folder has never synchronized, such as one copied from elsewhere,
+is a conflict: push asks before updating that post. A first pull is therefore
+not required before push.
 
 ### Prompts
 

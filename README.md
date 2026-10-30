@@ -37,7 +37,7 @@ From the folder you want to use for the blog:
 ```console
 wpsync create myblog --site https://example.com --username emrah
 export MYBLOG_WP_PASSWORD='abcd efgh ijkl mnop qrst uvwx'
-wpsync init
+wpsync pull
 ```
 
 `create` checks that the address is a WordPress site and saves the profile
@@ -47,10 +47,10 @@ to name it directly, and omit `-u`/`--username` to be prompted. The username is
 your WordPress login name or email address. A blog installed in a subfolder,
 such as `https://example.com/blog`, works like any other.
 
-`init` signs in and pulls every post and its images into the folder for the
-first time (see [Pulling posts](#pulling-posts)). `diff` and `pull` refuse to
-run in a folder that has not been initialized. If sign-in fails, the folder
-stays uninitialized and `init` can run again.
+The first `pull` downloads every post and its images (see
+[Pulling posts](#pulling-posts)). It also says which account signed in and
+notes any limits: an account that can edit only its own posts, such as an
+Author, does not see other authors' posts.
 
 Commands run inside a profile's folder, or any folder below it, use that
 profile automatically. Elsewhere, put the profile name before the command:
@@ -139,8 +139,7 @@ are an error.
 
 ## Pulling posts
 
-`init` runs the first pull, and `pull` brings later changes. Pulling brings
-the blog's posts into the profile folder: each post becomes
+`pull` brings the blog's posts into the profile folder: each post becomes
 `posts/<slug>.md`, and images from the site's media library are downloaded into
 `images/` and referenced from the Markdown. The copy of an image that the post
 displays is downloaded, usually WordPress's resized `large` copy.

@@ -1,10 +1,10 @@
 from pathlib import Path, PurePosixPath
 
-from wordpress_fake import SITE, FakeWordPress, add_profile, initialized, invoke
+from wordpress_fake import SITE, FakeWordPress, add_profile, invoke
 
 from wpsync.documents import Document, body_checksum, fields_checksum, write_document
 from wpsync.posts import ContentFormat, Post
-from wpsync.state import PostRecord, create_state, write_state
+from wpsync.state import PostRecord, write_state
 from wpsync.wordpress.client import fingerprint
 
 API_ROOT = f"{SITE}/wp-json/"
@@ -40,7 +40,7 @@ def new_post(root, name, **fields):
 
 def test_diff_without_local_changes_never_contacts_the_blog(tmp_path, store):
     wordpress = FakeWordPress()
-    initialized(store, tmp_path)
+    add_profile(store, "myblog", tmp_path)
     synced(tmp_path, wordpress, 1, "one.md")
     synced(tmp_path, wordpress, 2, "two.md")
 
@@ -58,7 +58,7 @@ def test_diff_shows_local_changes_and_fetches_only_those_posts(tmp_path, store):
     wordpress.post(3)["content"]["raw"] = (
         "<!-- wp:paragraph --><p>x</p><!-- /wp:paragraph -->"
     )
-    initialized(store, tmp_path)
+    add_profile(store, "myblog", tmp_path)
     edit(synced(tmp_path, wordpress, 1, "content.md"), "Body", "New body")
     edit(
         synced(tmp_path, wordpress, 2, "details.md"), "title: Post 2", "title: Renamed"
@@ -87,7 +87,7 @@ def test_diff_shows_local_changes_and_fetches_only_those_posts(tmp_path, store):
 def test_diff_matches_new_files_to_existing_posts_by_title_and_slug(tmp_path, store):
     wordpress = FakeWordPress(post_count=3)
     wordpress.posts.append({**wordpress.post(2), "id": 9, "slug": "post-2-copy"})
-    initialized(store, tmp_path)
+    add_profile(store, "myblog", tmp_path)
     new_post(tmp_path, "a.md", title="Different", slug="post-1")
     new_post(tmp_path, "b.md", title="Post 3")
     new_post(tmp_path, "c.md", title="Post 2")
@@ -106,7 +106,7 @@ def test_diff_matches_new_files_to_existing_posts_by_title_and_slug(tmp_path, st
 
 def test_one_post_is_selected_by_id_slug_or_path(tmp_path, store, monkeypatch):
     wordpress = FakeWordPress(post_count=2)
-    initialized(store, tmp_path)
+    add_profile(store, "myblog", tmp_path)
     edit(synced(tmp_path, wordpress, 1, "one.md"), "Body", "New body")
     edit(synced(tmp_path, wordpress, 2, "two.md"), "Body", "New body")
     monkeypatch.chdir(tmp_path / "posts")
@@ -122,7 +122,7 @@ def test_one_post_is_selected_by_id_slug_or_path(tmp_path, store, monkeypatch):
 
 def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store):
     wordpress = FakeWordPress(post_count=12)
-    initialized(store, tmp_path)
+    add_profile(store, "myblog", tmp_path)
     synced(tmp_path, wordpress, 12, "twelve.md")
     synced(tmp_path, wordpress, 3, "three.md")
     new_post(tmp_path, "idea.md", title="Idea")
@@ -141,16 +141,12 @@ def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store):
     assert wordpress.requests == []
 
 
-def test_diff_needs_a_folder_initialized_for_the_same_blog(tmp_path, store):
+def test_state_from_another_blog_is_refused(tmp_path, store):
     add_profile(store, "myblog", tmp_path)
+    with write_state(tmp_path, "https://other.test/wp-json/"):
+        pass
 
     status, _, errors = invoke(["myblog", "diff"], store)
-    assert (status, errors) == (
-        1,
-        f"wpsync: error: {tmp_path.resolve()} is not initialized; run wpsync init\n",
-    )
 
-    create_state(tmp_path.resolve(), "https://other.test/wp-json/")
-    status, _, errors = invoke(["myblog", "diff"], store)
     assert status == 1
     assert "synchronized with a different blog" in errors

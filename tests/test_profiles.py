@@ -22,7 +22,7 @@ def test_create_saves_a_profile_without_signing_in(tmp_path, store, monkeypatch)
     assert output.endswith(
         f"Created profile 'myblog': '{blog.resolve()}' maps to {SITE}.\n"
         "Next: set MYBLOG_WP_PASSWORD to an Application Password, then run "
-        "wpsync init.\n"
+        "wpsync pull.\n"
     )
     saved = json.loads(store.path.read_text())["profiles"]["myblog"]
     assert saved == {
@@ -101,17 +101,21 @@ def test_map_moves_the_local_folder_only_after_confirmation(tmp_path, store):
     assert store.load().profiles["myblog"].local_root == new.resolve()
 
 
-def test_init_signs_in_and_pulls_through_a_rest_route_api_root(tmp_path, store):
-    wordpress = FakeWordPress(post_count=120, rest_route=True)
+def test_first_pull_signs_in_through_a_rest_route_api_root(tmp_path, store):
+    wordpress = FakeWordPress(post_count=120, rest_route=True, can_edit_others=False)
     profile = ["--username", "emrah", "--local-root", str(tmp_path)]
     invoke(["create", "myblog", "--site", SITE, *profile], store, wordpress=wordpress)
 
-    status, output, errors = invoke(["myblog", "init"], store, wordpress=wordpress)
+    status, output, errors = invoke(["myblog", "pull"], store, wordpress=wordpress)
 
     assert (status, errors) == (0, "")
     assert store.load().profiles["myblog"].api_root == f"{SITE}/?rest_route=/"
     lines = output.splitlines()
-    assert lines[0] == f"Signed in to {SITE} as 'emrah' (administrator)."
+    assert lines[:2] == [
+        f"Signed in to {SITE} as 'emrah' (administrator).",
+        "Note: this account can edit only its own posts, so posts by other "
+        "authors are not pulled.",
+    ]
     assert lines[-1] == "Pulled 120 posts (120 new)."
 
 
@@ -123,13 +127,13 @@ def test_init_signs_in_and_pulls_through_a_rest_route_api_root(tmp_path, store):
         (FakeWordPress(can_edit=False), PASSWORD, "'emrah' cannot edit posts"),
     ],
 )
-def test_init_leaves_the_folder_uninitialized_until_sign_in_works(
+def test_pull_records_nothing_until_sign_in_works(
     tmp_path, store, wordpress, password, message
 ):
     add_profile(store, "myblog", tmp_path)
 
     status, _, errors = invoke(
-        ["myblog", "init"], store, wordpress=wordpress, password=password
+        ["myblog", "pull"], store, wordpress=wordpress, password=password
     )
 
     assert status == 1

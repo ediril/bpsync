@@ -27,21 +27,19 @@ def blog():
     return wordpress
 
 
-def init(store, wordpress):
-    return invoke(["myblog", "init"], store, wordpress=wordpress)
-
-
 def pull(store, wordpress, *arguments, stdin=""):
     return invoke(
         ["myblog", "pull", *arguments], store, wordpress=wordpress, stdin=stdin
     )
 
 
-def test_init_writes_posts_and_images_that_diff_then_sees_as_synced(tmp_path, store):
+def test_first_pull_writes_posts_and_images_that_diff_then_sees_as_synced(
+    tmp_path, store
+):
     wordpress = blog()
     add_profile(store, "myblog", tmp_path)
 
-    status, output, errors = init(store, wordpress)
+    status, output, errors = pull(store, wordpress)
 
     assert (status, errors) == (0, "")
     assert output.splitlines() == [
@@ -83,20 +81,13 @@ def test_init_writes_posts_and_images_that_diff_then_sees_as_synced(tmp_path, st
     )
     assert wordpress.requests == []
 
-    status, _, errors = init(store, wordpress)
-    assert (status, errors) == (
-        1,
-        f"wpsync: error: {tmp_path.resolve()} is already initialized; "
-        "run wpsync pull\n",
-    )
-
 
 def test_later_pulls_update_unedited_files_and_ask_before_replacing_edits(
     tmp_path, store
 ):
     wordpress = blog()
     add_profile(store, "myblog", tmp_path)
-    init(store, wordpress)
+    pull(store, wordpress)
     first, second = tmp_path / "posts/post-1.md", tmp_path / "posts/post-2.md"
     first.write_text(first.read_text().replace("---\n\n", "layout: post\n---\n\n"))
     second.write_text(second.read_text().replace("Body 2", "My edit"))
@@ -110,7 +101,7 @@ def test_later_pulls_update_unedited_files_and_ask_before_replacing_edits(
         "~ r  1  posts/post-1.md",
         "?    2  posts/post-2.md  changed on both sides; your file is unchanged",
         "Pulled 1 post (1 updated); 1 skipped. "
-        "Rerun pull with --yes to accept the skipped changes.",
+        "Rerun with --yes to accept the skipped changes.",
     ]
     assert "title: Renamed on WordPress" in first.read_text()
     assert "layout: post" in first.read_text()
@@ -132,7 +123,7 @@ def test_a_remote_post_matching_an_unlinked_file_is_linked_not_duplicated(
     add_profile(store, "myblog", tmp_path)
     write_document(tmp_path / "posts/draft.md", Document(None, Post(title="Post 2")))
 
-    status, output, _ = init(store, wordpress)
+    status, output, _ = pull(store, wordpress)
 
     assert (
         "?    2  posts/draft.md  matches this file (same title); not linked"
@@ -150,7 +141,7 @@ def test_a_remote_post_matching_an_unlinked_file_is_linked_not_duplicated(
 def test_pull_never_deletes_or_restores_files(tmp_path, store):
     wordpress = blog()
     add_profile(store, "myblog", tmp_path)
-    init(store, wordpress)
+    pull(store, wordpress)
     (tmp_path / "posts/post-1.md").unlink()
     wordpress.posts.remove(wordpress.post(2))
 
@@ -176,7 +167,7 @@ def test_images_kept_inside_html_are_not_downloaded(tmp_path, store):
     )
     add_profile(store, "myblog", tmp_path)
 
-    status, output, _ = init(store, wordpress)
+    status, output, _ = pull(store, wordpress)
 
     assert "+ r  2  posts/post-2.md  kept as HTML: core/image" in output
     assert sorted(p.name for p in (tmp_path / "images").iterdir()) == [

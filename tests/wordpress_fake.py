@@ -7,7 +7,6 @@ import httpx
 
 from wpsync.cli import run
 from wpsync.config import Profile
-from wpsync.state import create_state
 
 SITE = "https://blog.test"
 PASSWORD = "abcd efgh ijkl mnop"
@@ -17,9 +16,15 @@ class FakeWordPress:
     """Serves the REST API responses wpsync reads, as WordPress shapes them."""
 
     def __init__(
-        self, post_count=3, rest_route=False, can_edit=True, advertises_api=True
+        self,
+        post_count=3,
+        rest_route=False,
+        can_edit=True,
+        can_edit_others=True,
+        advertises_api=True,
     ):
         self.rest_route = rest_route
+        self.can_edit_others = can_edit_others
         self.advertises_api = advertises_api
         self.can_edit = can_edit
         self.requests = []
@@ -81,6 +86,7 @@ class FakeWordPress:
                     "roles": ["administrator"],
                     "capabilities": {
                         "edit_posts": self.can_edit,
+                        "edit_others_posts": self.can_edit_others,
                         "unfiltered_html": True,
                     },
                 },
@@ -138,9 +144,3 @@ def add_profile(store, name, root):
         ),
     )
     store.save(configuration)
-
-
-def initialized(store, root):
-    """A profile whose folder is initialized, as init leaves it before pulling."""
-    add_profile(store, "myblog", root)
-    create_state(root.resolve(), f"{SITE}/wp-json/")
