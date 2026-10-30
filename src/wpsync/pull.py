@@ -202,19 +202,17 @@ class Puller:
         match = match_post(post.post, self.unlinked)
         if match.candidates:
             files = ", ".join(c.id for c in match.candidates)
-            self._skip(post.id, None, f"matches several local files: {files}")
+            self._skip(post.id, None, f"same slug as several local files: {files}")
             return
         if match.post is not None:
             candidate = match.post
             path = PurePosixPath(candidate.id)
             if not self.confirm(
-                f"WordPress post #{post.id} {post.post.title!r} matches {path} "
-                f"({match.reason}). Link them and replace the file with "
-                "WordPress's version?"
+                f"WordPress post #{post.id} {post.post.title!r} has the same slug "
+                f"as {path}. Link them and replace the file with WordPress's "
+                "version?"
             ):
-                self._skip(
-                    post.id, path, f"matches this file ({match.reason}); not linked"
-                )
+                self._skip(post.id, path, "same slug as this file; not linked")
                 return
             self.unlinked.remove(candidate)
             if self._write(post, path, candidate.document.document, Action.NEW):

@@ -89,27 +89,29 @@ class Candidate(Protocol):
 
 @dataclass(frozen=True)
 class Match(Generic[C]):
-    """How a post relates to the posts on the other side."""
+    """How a post relates to the posts on the other side.
+
+    Only a shared slug identifies the same post. A shared title is reported so
+    the user can avoid a duplicate, but titles need not be unique.
+    """
 
     post: C | None
-    reason: str = ""
+    """The one post with the same slug."""
     candidates: tuple[C, ...] = ()
+    """Several posts with the same slug; none is chosen."""
+    same_title: tuple[C, ...] = ()
+    """Other posts with the same title."""
 
 
 def match_post(post: Post, candidates: Sequence[C]) -> Match[C]:
-    """Match by slug and title, never choosing among several candidates."""
-    by_slug = [c for c in candidates if post.slug and c.slug == post.slug]
+    by_slug = tuple(c for c in candidates if post.slug and c.slug == post.slug)
     title = post.title.strip()
-    by_title = [c for c in candidates if title and c.title.strip() == title]
-    found = {c.id: c for c in by_slug + by_title}
-    if not found:
-        return Match(None)
-    if len(found) > 1:
-        return Match(None, candidates=tuple(found.values()))
-    reasons = [
-        name for name, group in (("title", by_title), ("slug", by_slug)) if group
-    ]
-    return Match(next(iter(found.values())), "same " + " and ".join(reasons))
+    same_title = tuple(
+        c for c in candidates if title and c.title.strip() == title and c not in by_slug
+    )
+    if len(by_slug) > 1:
+        return Match(None, by_slug, same_title)
+    return Match(by_slug[0] if by_slug else None, (), same_title)
 
 
 class Action(StrEnum):
@@ -252,9 +254,12 @@ def _new_entry(document: LocalDocument, summaries: Sequence[PostSummary]) -> Dif
     if match.candidates:
         listed = ", ".join(f"#{post.id} {post.title!r}" for post in match.candidates)
         return DiffEntry(
-            Action.CONFLICT, "l", None, path, f"matches several posts: {listed}"
+            Action.CONFLICT, "l", None, path, f"same slug as several posts: {listed}"
         )
     if match.post is not None:
-        detail = f"matches #{match.post.id} {match.post.title!r} ({match.reason})"
-        return DiffEntry(Action.NEW, "l", None, path, detail)
-    return DiffEntry(Action.NEW, "l", None, path, "new post")
+        detail = f"same slug as #{match.post.id} {match.post.title!r}"
+        return DiffEntry(Action.CONFLICT, "l", None, path, detail)
+    detail = "new post"
+    if match.same_title:
+        detail += "; same title as " + ", ".join(f"#{p.id}" for p in match.same_title)
+    return DiffEntry(Action.NEW, "l", None, path, detail)

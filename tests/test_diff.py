@@ -84,7 +84,7 @@ def test_diff_shows_local_changes_and_fetches_only_those_posts(tmp_path, store):
     assert fetched == ["1,2,3,4"]
 
 
-def test_diff_matches_new_files_to_existing_posts_by_title_and_slug(tmp_path, store):
+def test_diff_matches_new_files_by_slug_and_notes_shared_titles(tmp_path, store):
     wordpress = FakeWordPress(post_count=3)
     wordpress.posts.append({**wordpress.post(2), "id": 9, "slug": "post-2-copy"})
     add_profile(store, "myblog", tmp_path)
@@ -97,9 +97,9 @@ def test_diff_matches_new_files_to_existing_posts_by_title_and_slug(tmp_path, st
 
     assert status == 0
     assert output.splitlines() == [
-        "+ l  -  posts/a.md  matches #1 'Post 1' (same slug)",
-        "+ l  -  posts/b.md  matches #3 'Post 3' (same title)",
-        "? l  -  posts/c.md  matches several posts: #2 'Post 2', #9 'Post 2'",
+        "? l  -  posts/a.md  same slug as #1 'Post 1'",
+        "+ l  -  posts/b.md  new post; same title as #3",
+        "+ l  -  posts/c.md  new post; same title as #2, #9",
         "+ l  -  posts/d.md  new post",
     ]
 

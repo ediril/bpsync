@@ -164,9 +164,10 @@ Pull never loses local work:
 - A file you edited is replaced only after you confirm, and only when the post
   also changed on WordPress. Without a terminal, or when you answer no, the
   file is skipped.
-- A WordPress post whose title or slug matches a local file that has no `id`
-  yet is linked to that file only after you confirm, so pull does not create
-  a duplicate.
+- A WordPress post with the same slug as a local file that has no `id` yet is
+  linked to that file only after you confirm, so pull does not create a
+  duplicate. A shared title alone does not link them, because titles need not
+  be unique.
 - A file you deleted is not restored, and a post deleted on WordPress keeps its
   local file.
 - Header entries WPSync does not sync, such as `layout:`, are kept when a file
@@ -207,7 +208,9 @@ Not shown: 12 unchanged (-a to show)
 `content` means the body changed and `details` means a header field changed.
 `diff` never changes anything. It contacts the blog only for posts that changed
 locally, to check whether they also changed on WordPress since the last sync,
-and for new files, to match them against existing posts by title and slug.
+and for new files, to check their slugs and titles against existing posts. A
+taken slug is a conflict (`?`); a shared title is noted, since push asks before
+creating a second post with the same title.
 With no local changes it works offline. Posts created or edited on WordPress
 appear only through `pull`.
 

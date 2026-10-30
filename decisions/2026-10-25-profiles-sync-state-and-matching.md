@@ -63,6 +63,8 @@ ID, slug, or file path.
 
 ### Matching
 
+Only a shared slug identifies the same post; titles need not be unique.
+
 Creating a post through the REST API never overwrites one: WordPress gives a
 new post with a taken slug a different slug (`hello-world-2`). Only an update,
 which names a post ID, changes an existing post. A file without a post ID is
@@ -75,10 +77,16 @@ checked against remote posts at push time:
   with the same title. Titles need not be unique.
 - Nothing matches: create a new post.
 
-A confirmed match writes the post ID into the file's frontmatter. A file whose
+A confirmed match writes the post ID into the file's frontmatter. When a file
+without a slug creates a post, the slug WordPress assigns is written into the
+file and the sync state. A file whose
 post ID this folder has never synchronized, such as one copied from elsewhere,
 is a conflict: push asks before updating that post. A first pull is therefore
 not required before push.
+
+Pull applies the same rule in the other direction: a WordPress post with the
+same slug as a local file without a post ID is linked to it only after
+confirmation, and a shared title alone does not link them.
 
 ### Prompts
 
@@ -124,5 +132,5 @@ would otherwise ask.
 - Detecting WordPress-side changes to posts that are unchanged locally,
   except through `pull`.
 - Selecting several posts in one command; a command acts on one post or all.
-- Matching on title or slug without confirmation.
+- Linking posts by title, or by slug without confirmation.
 - Permanent remote deletion.

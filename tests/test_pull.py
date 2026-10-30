@@ -116,21 +116,17 @@ def test_later_pulls_update_unedited_files_and_ask_before_replacing_edits(
     assert "My edit" not in second.read_text()
 
 
-def test_a_remote_post_matching_an_unlinked_file_is_linked_not_duplicated(
-    tmp_path, store
-):
+def test_only_a_shared_slug_links_an_unlinked_file_to_a_remote_post(tmp_path, store):
     wordpress = blog()
     add_profile(store, "myblog", tmp_path)
-    write_document(tmp_path / "posts/draft.md", Document(None, Post(title="Post 2")))
+    write_document(tmp_path / "posts/draft.md", Document(None, Post(slug="post-2")))
+    write_document(tmp_path / "posts/idea.md", Document(None, Post(title="Post 1")))
 
     status, output, _ = pull(store, wordpress)
 
-    assert (
-        "?    2  posts/draft.md  matches this file (same title); not linked"
-        in output.splitlines()
-    )
+    assert "?    2  posts/draft.md  same slug as this file; not linked" in output
     names = sorted(p.name for p in (tmp_path / "posts").iterdir())
-    assert names == ["draft.md", "post-1.md"]
+    assert names == ["draft.md", "idea.md", "post-1.md"]
 
     status, output, _ = pull(store, wordpress, "2", stdin=Terminal("y\n"))
 

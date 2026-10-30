@@ -52,7 +52,7 @@ MARKER_COLORS = {
     "r": "\033[38;5;30m",
 }
 LEGEND = (
-    ("+ l", "new local post; push creates it, or links it to the post it matches"),
+    ("+ l", "new local post; push creates it"),
     ("~ l", "changed locally; push updates the post"),
     ("- l", "deleted locally; WordPress keeps the post"),
     ("?  ", "conflict or ambiguous match; push stops and asks"),

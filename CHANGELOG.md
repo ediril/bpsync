@@ -22,7 +22,8 @@
   fence.
 - `diff [POST]` shows local changes in HLSync's notation, with the second
   column marking the side that changed. It contacts the blog only for changed
-  or new posts and matches new files to existing posts by title and slug.
+  or new posts. A new file whose slug belongs to a post is a conflict, and a
+  shared title is noted.
   `ls` lists local posts by ID, slug, and title.
 - `pull [POST]` brings posts into `posts/<slug>.md` and downloads the images
   they display into `images/`. Edited files are replaced, and unlinked files
