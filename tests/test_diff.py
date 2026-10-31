@@ -169,11 +169,15 @@ def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store, monke
         " -  p     -       Idea (idea.md)",
     ]
     assert ls("-l") == [
-        "ID  Attr  Slug     Title    File             URL"
-        "                         Issues",
-        " 3  p     post-3   Post 3   posts/three.md   https://blog.test/post-3/   -",
-        "12  p     post-12  Post 12  posts/twelve.md  https://blog.test/post-12/  -",
-        " -  p     -        Idea     posts/idea.md    -                           -",
+        "ID  Attr  Issues  Title",
+        " 3  p     -       Post 3",
+        "                  posts/three.md",
+        "                  https://blog.test/post-3/",
+        "12  p     -       Post 12",
+        "                  posts/twelve.md",
+        "                  https://blog.test/post-12/",
+        " -  p     -       Idea",
+        "                  posts/idea.md",
     ]
     assert wordpress.requests == []
 
@@ -184,6 +188,7 @@ def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store, monke
         "12  p     -       Post …",
         " -  p     -       Idea …",
     ]
+    assert ls("-l", stdout=Terminal())[2] == "                  posts…"
 
 
 def test_show_finds_a_post_by_id_slug_file_or_title(tmp_path, store):

@@ -32,8 +32,8 @@
   or new posts. A new file whose slug belongs to a post is a conflict, and a
   shared title is noted. Private posts are listed with `-a`, and a published
   post made private shows as `unpublish`. `ls` lists local posts by ID, title,
-  file, and number of issues, fitting the terminal; `ls -l` adds each post's
-  slug and address on the blog. `show POST` gives one post's details and lists its
+  file, and number of issues, fitting the terminal; `ls -l` puts each post's
+  file and address on the blog on their own lines. `show POST` gives one post's details and lists its
   issues, finding the post by ID, slug, file, or title.
 - `pull [POST]` brings posts into `posts/<slug>.md` and downloads the images
   they display into `images/`. Edited files are replaced, and unlinked files

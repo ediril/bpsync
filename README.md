@@ -203,8 +203,17 @@ ID  Attr  Issues  Title (file)
  -  -     -       Idea (idea.md)
 ```
 
-`wpsync ls -l` prints every column in full, adding each post's slug, file, and
-address on the blog as of the last pull.
+`wpsync ls -l` puts each post's file and its address on the blog, as of the last
+pull, on their own lines. If a line is cut, widen the terminal or pipe the output,
+which is never cut:
+
+```console
+$ wpsync ls -l
+ID  Attr  Issues  Title
+67  p     2       Hurt
+                  posts/hurt.md
+                  https://blog.test/hurt/
+```
 
 `Attr` shows `p` for a public post. `Issues` counts what is wrong with a post;
 `show` says what, for one post chosen by ID, slug, file, or title:

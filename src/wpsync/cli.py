@@ -257,11 +257,14 @@ def build_parser() -> argparse.ArgumentParser:
         usage="wpsync ls [-l]\n       wpsync PROFILE ls [-l]",
         description=(
             "List the post files in this profile without contacting the blog. On a "
-            "terminal, lines are cut to fit; -l prints every column in full."
+            "terminal, lines are cut to fit instead of wrapping."
         ),
     )
     ls.add_argument(
-        "-l", "--long", action="store_true", help="also show slugs, files, and URLs"
+        "-l",
+        "--long",
+        action="store_true",
+        help="show each post's file and URL on their own lines",
     )
 
     show = subparsers.add_parser(
@@ -543,10 +546,9 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
         return (post_id is None, int(post_id) if post_id else 0, str(item.path))
 
     records = read_records(profile.local_root, profile.api_root)
-    if arguments.long:
-        rows = [("ID", "Attr", "Slug", "Title", "File", "URL", "Issues")]
-    else:
-        rows = [("ID", "Attr", "Issues", "Title (file)")]
+    heading = "Title" if arguments.long else "Title (file)"
+    rows = [("ID", "Attr", "Issues", heading)]
+    details: list[list[str]] = [[]]
     for item in sorted(documents, key=order):
         post = item.document.post
         post_id = item.document.post_id or "-"
@@ -556,22 +558,23 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
         missing = record.missing_files if record else ()
         issues = str(len(missing)) if missing else "-"
         if arguments.long:
-            url = record.url if record else "-"
-            slug = post.slug or "-"
-            rows.append((post_id, attr, slug, title, str(item.path), url, issues))
+            rows.append((post_id, attr, issues, title))
+            details.append([str(item.path), *([record.url] if record else [])])
         else:
             name = PurePosixPath(item.path).relative_to(POSTS_DIR)
             rows.append((post_id, attr, issues, f"{title} ({name})"))
-    widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
-    lines = [
-        "  ".join(
-            cell.rjust(width) if index == 0 else cell.ljust(width)
-            for index, (cell, width) in enumerate(zip(row, widths, strict=True))
-        ).rstrip()
-        for row in rows
-    ]
+            details.append([])
+    widths = [max(len(row[i]) for row in rows) for i in range(3)]
+    indent = " " * (sum(widths) + 6)
+    lines = []
+    for (post_id, attr, issues, title), extra in zip(rows, details, strict=True):
+        lines.append(
+            f"{post_id:>{widths[0]}}  {attr:<{widths[1]}}  "
+            f"{issues:<{widths[2]}}  {title}"
+        )
+        lines.extend(indent + line for line in extra)
     is_terminal = getattr(session.stdout, "isatty", None)
-    if not arguments.long and is_terminal and is_terminal():
+    if is_terminal and is_terminal():
         columns = shutil.get_terminal_size().columns
         lines = [_fit(line, columns) for line in lines]
     return "\n".join(lines)
