@@ -9,6 +9,25 @@ frontmatter holds the platform post ID once the file is linked to a post, plus
 title, slug, date, status, categories, and tags. Categories and tags are names;
 the WordPress adapter resolves them to term IDs.
 
+### Status
+
+`status` says whether a post belongs on the blog: `public` or `private`, with
+`private` the default, so a file is never published by accident. Push publishes
+public posts; a public post with a future date becomes a scheduled post on the
+platform. Push never sends a private post, with one exception: a post that is
+published on the platform and has become private locally is turned into a
+draft there. Unpublishing keeps the post's ID, comments, address, and platform
+data, so making it public again republishes the same post; deleting and
+recreating it would lose them. Pull maps the platform's statuses onto the two:
+published posts become `public`; drafts, pending, scheduled, and
+platform-private posts become `private`. Platform-only states such as
+WordPress's members-only private status cannot be set from WPSync.
+
+Status is a header field rather than a reserved tag, because tags are the
+platform's own taxonomy and are published with the post. Other control flags
+(sticky posts, closed comments, files pull must not overwrite) may later share a
+`flags:` list; none is needed yet.
+
 ### Markdown dialect
 
 The body is CommonMark with four extensions:
@@ -84,6 +103,10 @@ or `display` make whitespace significant.
 Embed blocks without custom classes or alignment become their bare URL. Images
 from the site's media library are downloaded into `images/` and the Markdown
 references the local file; only images the final Markdown uses are downloaded.
+An image whose file is gone from the server (HTTP 404 or 410, or a response that
+is not an image) is reported and kept as its exact source with its WordPress URL, so a dead image never keeps a
+post out of sync and a push sends its original markup; any other download
+failure stops the pull, so a passing outage cannot change how a post is stored.
 A classic-editor image (`<p><img class="wp-image-N size-X">`) and a block-editor
 image figure are read as the same image, with alignment allowed on either
 element, so a classic post's images become Markdown images and are pushed back

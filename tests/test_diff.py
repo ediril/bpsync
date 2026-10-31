@@ -3,7 +3,7 @@ from pathlib import Path, PurePosixPath
 from wordpress_fake import SITE, FakeWordPress, add_profile, invoke
 
 from wpsync.documents import Document, body_checksum, fields_checksum, write_document
-from wpsync.posts import ContentFormat, Post
+from wpsync.posts import ContentFormat, Post, PostStatus
 from wpsync.state import PostRecord, write_state
 from wpsync.wordpress.client import fingerprint
 
@@ -13,7 +13,12 @@ API_ROOT = f"{SITE}/wp-json/"
 def synced(root, wordpress, post_id, name):
     """Write a post file and record it as synchronized with the fake blog."""
     remote = wordpress.post(post_id)
-    post = Post(title=remote["title"]["raw"], slug=remote["slug"], body="Body")
+    post = Post(
+        title=remote["title"]["raw"],
+        slug=remote["slug"],
+        status=PostStatus.PUBLIC,
+        body="Body",
+    )
     path = Path("posts") / name
     write_document(root / path, Document(str(post_id), post))
     with write_state(root, API_ROOT) as state:
@@ -35,6 +40,7 @@ def edit(path, old, new):
 
 
 def new_post(root, name, **fields):
+    fields.setdefault("status", PostStatus.PUBLIC)
     write_document(root / "posts" / name, Document(None, Post(**fields)))
 
 
@@ -65,7 +71,7 @@ def test_diff_without_local_changes_never_contacts_the_blog(tmp_path, store):
 
 
 def test_diff_shows_local_changes_and_fetches_only_those_posts(tmp_path, store):
-    wordpress = FakeWordPress(post_count=6)
+    wordpress = FakeWordPress(post_count=7)
     wordpress.post(3)["content"]["raw"] = (
         "<!-- wp:paragraph --><p>x</p><!-- /wp:paragraph -->"
     )
@@ -79,6 +85,12 @@ def test_diff_shows_local_changes_and_fetches_only_those_posts(tmp_path, store):
     wordpress.post(4)["title"]["raw"] = "Edited on WordPress"
     synced(tmp_path, wordpress, 5, "deleted.md").unlink()
     synced(tmp_path, wordpress, 6, "unchanged.md")
+    edit(
+        synced(tmp_path, wordpress, 7, "unpublish.md"),
+        "status: public",
+        "status: private",
+    )
+    new_post(tmp_path, "note.md", title="Note", status=PostStatus.PRIVATE)
 
     status, output, _ = invoke(["myblog", "diff"], store, wordpress=wordpress)
 
@@ -89,10 +101,11 @@ def test_diff_shows_local_changes_and_fetches_only_those_posts(tmp_path, store):
         "~ l  1  posts/content.md  content",
         "- l  5  posts/deleted.md  deleted locally; WordPress keeps the post",
         "~ l  2  posts/details.md  details",
-        "Not shown: 1 unchanged (-a to show)",
+        "~ l  7  posts/unpublish.md  unpublish; becomes a draft on WordPress",
+        "Not shown: 1 unchanged, 1 private (-a to show)",
     ]
     fetched = [r.url.params.get("include") for r in wordpress.requests]
-    assert fetched == ["1,2,3,4"]
+    assert fetched == ["1,2,3,4,7"]
 
 
 def test_diff_matches_new_files_by_slug_and_notes_shared_titles(tmp_path, store):

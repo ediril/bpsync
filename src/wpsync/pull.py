@@ -18,7 +18,7 @@ from wpsync.documents import (
     serialize_document,
 )
 from wpsync.markup.markdown import image_sources
-from wpsync.media import Media, MediaLibrary
+from wpsync.media import Download, Media, MediaLibrary, MissingImage
 from wpsync.posts import Conversion, FetchedPost, UnrepresentableContent
 from wpsync.state import MediaRecord, PostRecord, write_state
 from wpsync.storage import write_atomic, write_text_atomic
@@ -51,6 +51,7 @@ class PullResult:
     updated: int = 0
     linked: int = 0
     images: int = 0
+    missing_images: int = 0
     skipped: int = 0
     changes_kept: int = 0
 
@@ -75,6 +76,9 @@ class PullResult:
         line += f" ({', '.join(parts)})" if parts else ""
         if self.images:
             line += f", {self.images} image{'s' * (self.images != 1)}"
+        if self.missing_images:
+            missing = self.missing_images
+            line += f"; {missing} image{'s' * (missing != 1)} missing"
         if self.skipped:
             line += f"; {self.skipped} skipped"
         if self.changes_kept:
@@ -127,7 +131,6 @@ class Puller:
                 if post_id not in present and post_id in self.documents:
                     self._line(
                         Action.DELETED,
-                        "r",
                         post_id,
                         record.path,
                         "deleted on WordPress; local file kept",
@@ -140,7 +143,6 @@ class Puller:
         if record is not None and document is None:
             self._line(
                 Action.DELETED,
-                "l",
                 post.id,
                 record.path,
                 "deleted locally; not restored",
@@ -184,7 +186,7 @@ class Puller:
             for download in self.library.take_pending():
                 self.library.release(download)
             self._record(post, path, document.document, [])
-            self._line(Action.UNCHANGED, "", post.id, path, "linked; already identical")
+            self._line(Action.UNCHANGED, post.id, path, "linked; already identical")
             self.result.linked += 1
             return
         if not self.confirm(
@@ -242,13 +244,13 @@ class Puller:
             conversion = self._convert(post, path)
             if conversion is None:
                 return False
+        fetched = self._fetch_images(post, path, conversion)
+        missing = self.library.take_missing()
+        if fetched is None:
+            return False
+        conversion, files = fetched
         images = []
-        used = image_sources(conversion.markdown)
-        for download in self.library.take_pending():
-            if str(download.path) not in used:
-                self.library.release(download)
-                continue
-            data = self.remote.download(download.url)
+        for download, data in files:
             write_atomic(self.root / download.path, data, mode=0o644)
             image = MediaRecord(
                 download.path,
@@ -267,13 +269,50 @@ class Puller:
         write_text_atomic(self.root / path, serialize_document(written), mode=0o644)
         self._record(post, path, written, images)
         self.result.images += len(images)
+        self.result.missing_images += len(missing)
         details = []
         if images:
             details.append(f"{len(images)} image{'s' * (len(images) != 1)}")
+        if missing:
+            details.append(
+                f"image{'s' * (len(missing) != 1)} missing: " + ", ".join(missing)
+            )
         if conversion.kept:
             details.append("kept as HTML: " + ", ".join(dict.fromkeys(conversion.kept)))
-        self._line(action, "r", post.id, path, "; ".join(details))
+        self._line(action, post.id, path, "; ".join(details))
         return True
+
+    def _fetch_images(
+        self, post: FetchedPost, path: PurePosixPath, conversion: Conversion | None
+    ) -> tuple[Conversion, list[tuple[Download, bytes]]] | None:
+        """Download the images a conversion uses before anything is written.
+
+        An image whose file is gone stays in the post as its original source,
+        so the post is converted again without a local copy of it.
+        """
+        contents: dict[str, bytes] = {}
+        while conversion is not None:
+            used = image_sources(conversion.markdown)
+            downloads = []
+            for download in self.library.take_pending():
+                if str(download.path) in used:
+                    downloads.append(download)
+                else:
+                    self.library.release(download)
+            absent = []
+            for download in downloads:
+                try:
+                    if download.url not in contents:
+                        contents[download.url] = self.remote.download(download.url)
+                except MissingImage:
+                    absent.append(download.url)
+            if not absent:
+                return conversion, [(d, contents[d.url]) for d in downloads]
+            for download in downloads:
+                self.library.release(download)
+            self.library.missing.extend(absent)
+            conversion = self._convert(post, path)
+        return None
 
     def _convert(self, post: FetchedPost, path: PurePosixPath) -> Conversion | None:
         try:
@@ -309,14 +348,13 @@ class Puller:
 
     def _skip(self, post_id: str, path: PurePosixPath | None, detail: str) -> None:
         self.result.skipped += 1
-        self._line(Action.CONFLICT, "", post_id, path or PurePosixPath("-"), detail)
+        self._line(Action.CONFLICT, post_id, path or PurePosixPath("-"), detail)
 
     def _line(
         self,
         action: Action,
-        side: str,
         post_id: str,
         path: PurePosixPath,
         detail: str = "",
     ) -> None:
-        self.report(DiffEntry(action, side, post_id, path, detail))
+        self.report(DiffEntry(action, "", post_id, path, detail))

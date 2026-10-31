@@ -16,7 +16,7 @@ from wpsync.documents import (
     body_checksum,
     fields_checksum,
 )
-from wpsync.posts import ContentFormat, Post, PostSummary, RemoteState
+from wpsync.posts import ContentFormat, Post, PostStatus, PostSummary, RemoteState
 from wpsync.state import PostRecord
 
 C = TypeVar("C", bound="Candidate")
@@ -120,6 +120,7 @@ class Action(StrEnum):
     DELETED = "-"
     CONFLICT = "?"
     UNCHANGED = "="
+    PRIVATE = "x"
 
 
 @dataclass(frozen=True)
@@ -171,11 +172,16 @@ def compare(selection: Selection, remote: Remote) -> Diff:
         notes.extend(_typo_notes(document))
         post_id = document.document.post_id
         path = PurePosixPath(document.path)
+        private = document.document.post.status is PostStatus.PRIVATE
+        if post_id is not None:
+            present.add(post_id)
+        record = selection.records.get(post_id) if post_id else None
+        if private and record is None:
+            entries.append(DiffEntry(Action.PRIVATE, "l", post_id, path, "private"))
+            continue
         if post_id is None:
             new.append(document)
             continue
-        present.add(post_id)
-        record = selection.records.get(post_id)
         if record is None:
             unlinked.append(document)
             continue
@@ -203,6 +209,15 @@ def compare(selection: Selection, remote: Remote) -> Diff:
         state = states.get(post_id)
         path = PurePosixPath(document.path)
         detail = ", ".join(changes)
+        unpublish = document.document.post.status is PostStatus.PRIVATE
+        if unpublish:
+            # Push sends nothing for a private post except unpublishing it.
+            if state is None or not state.published:
+                entries.append(
+                    DiffEntry(Action.PRIVATE, "l", post_id, path, f"{detail}; private")
+                )
+                continue
+            detail = "unpublish; becomes a draft on WordPress"
         if state is None:
             entries.append(
                 DiffEntry(
@@ -224,7 +239,11 @@ def compare(selection: Selection, remote: Remote) -> Diff:
                 )
             )
         else:
-            if "content" in changes and state.format is ContentFormat.BLOCKS:
+            if (
+                "content" in changes
+                and not unpublish
+                and state.format is ContentFormat.BLOCKS
+            ):
                 detail += "; block post becomes plain HTML on push"
             entries.append(DiffEntry(Action.CHANGED, "l", post_id, path, detail))
     for document in unlinked:

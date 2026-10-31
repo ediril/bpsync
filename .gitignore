@@ -5,7 +5,7 @@ __pycache__/
 build/
 dist/
 *venv/
-tmp/
+tmp*/
 
 .DS_Store
 *.bak

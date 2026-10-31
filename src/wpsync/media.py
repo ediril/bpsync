@@ -12,6 +12,10 @@ from wpsync.state import MediaRecord
 IMAGES_DIR = "images"
 
 
+class MissingImage(Exception):
+    """The platform lists an image, but its file is gone."""
+
+
 @dataclass(frozen=True)
 class MediaImage:
     id: str
@@ -47,8 +51,12 @@ class MediaLibrary:
         self.by_path = {record.path: record for record in records}
         self.by_url = {record.url: record.path for record in records}
         self.pending: dict[PurePosixPath, Download] = {}
+        self.missing: list[str] = []
+        """The current post's images that have no file to download."""
 
     def remember(self, url: str, media_id: str, size: str) -> str:
+        if url in self.missing:
+            return url
         path = self.by_url.get(url)
         if path is None:
             path = self._free_path(url, media_id)
@@ -70,6 +78,11 @@ class MediaLibrary:
         downloads = list(self.pending.values())
         self.pending.clear()
         return downloads
+
+    def take_missing(self) -> list[str]:
+        missing = self.missing
+        self.missing = []
+        return missing
 
     def release(self, download: Download) -> None:
         """Forget a planned download that the converted post does not use."""

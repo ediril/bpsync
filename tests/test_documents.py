@@ -20,7 +20,7 @@ def test_synced_fields_survive_a_round_trip_with_yaml_lookalike_values():
             title="Yes: no # 123",
             slug="ça-va",
             date=datetime(2026, 10, 1, 7, 30, tzinfo=UTC),
-            status=PostStatus.SCHEDULED,
+            status=PostStatus.PUBLIC,
             categories=("News",),
             tags=("2026", "null", "true"),
             body="# Heading\n\nText with `code`.",
@@ -53,7 +53,7 @@ def test_unsynced_frontmatter_is_kept_verbatim_while_synced_fields_are_rewritten
     assert rewritten == (
         "---\n"
         "title: Hello\n"
-        "status: draft\n"
+        "status: private\n"
         "categories: []\n"
         "tags:\n"
         "- a\n"
@@ -76,7 +76,7 @@ def test_unsynced_frontmatter_is_kept_verbatim_while_synced_fields_are_rewritten
         ("# Just Markdown\n", "start the file with a header such as"),
         ("---\ndate: 2026-10-01 09:30\n---\n", "needs a time zone"),
         ("---\ntags: python\n---\n", "'tags' must be a list"),
-        ("---\nstatus: publish\n---\n", "must be one of: draft, published"),
+        ("---\nstatus: publish\n---\n", "must be one of: public, private"),
     ],
 )
 def test_invalid_files_are_rejected_with_an_actionable_message(text, message):

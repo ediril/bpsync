@@ -13,10 +13,9 @@ class ContentFormat(StrEnum):
 
 
 class PostStatus(StrEnum):
-    DRAFT = "draft"
-    PUBLISHED = "published"
-    SCHEDULED = "scheduled"
-    PENDING = "pending"
+    """Whether push publishes a post. A private post is never pushed."""
+
+    PUBLIC = "public"
     PRIVATE = "private"
 
 
@@ -27,7 +26,7 @@ class Post:
     title: str = ""
     slug: str = ""
     date: datetime | None = None
-    status: PostStatus = PostStatus.DRAFT
+    status: PostStatus = PostStatus.PRIVATE
     categories: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
     body: str = ""
@@ -38,8 +37,6 @@ class PostSummary:
     id: str
     title: str
     slug: str
-    status: PostStatus
-    date: datetime
 
 
 @dataclass(frozen=True)
@@ -48,6 +45,7 @@ class RemoteState:
 
     fingerprint: str
     format: ContentFormat
+    published: bool
 
 
 @dataclass(frozen=True)

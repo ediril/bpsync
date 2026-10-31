@@ -23,7 +23,7 @@ from wpsync.storage import write_text_atomic
 POSTS_DIR = "posts"
 FENCE = "---"
 FIELDS = ("id", "title", "slug", "date", "status", "categories", "tags")
-EXAMPLE_HEADER = "---\ntitle: My post\nstatus: draft\n---"
+EXAMPLE_HEADER = "---\ntitle: My post\nstatus: public\n---"
 
 
 class DocumentError(ValueError):
@@ -84,7 +84,7 @@ def _date(value: str) -> datetime | None:
 
 def _status(value: str) -> PostStatus:
     if value == "":
-        return PostStatus.DRAFT
+        return PostStatus.PRIVATE
     try:
         return PostStatus(value)
     except ValueError as error:
@@ -150,7 +150,7 @@ def parse_document(text: str) -> Document:
         else None,
         status=_status(_scalar(values["status"], "status").strip())
         if "status" in values
-        else PostStatus.DRAFT,
+        else PostStatus.PRIVATE,
         categories=_terms(values["categories"], "categories")
         if "categories" in values
         else (),

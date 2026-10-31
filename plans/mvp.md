@@ -27,7 +27,7 @@ Each post is represented by a Markdown file with YAML frontmatter.
 
 Supported content includes:
 
-- Title, slug, date, status (draft/published), categories, and tags.
+- Title, slug, date, status (public/private), categories, and tags.
 - Markdown text, links, and images.
 - Local images that are uploaded to and retrieved from WordPress.
 - Existing WordPress posts, preserving their identity and permalinks.

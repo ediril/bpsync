@@ -18,13 +18,14 @@ API_LINK_RELATION = "https://api.w.org/"
 TIMEOUT = httpx.Timeout(30.0)
 PAGE_SIZE = 100
 SYNCED_STATUSES = "publish,future,draft,pending,private"
-STATUSES = {
-    "publish": PostStatus.PUBLISHED,
-    "future": PostStatus.SCHEDULED,
-    "draft": PostStatus.DRAFT,
-    "pending": PostStatus.PENDING,
-    "private": PostStatus.PRIVATE,
-}
+
+
+def local_status(status: str) -> PostStatus:
+    """Only a published post is public; drafts, scheduled, pending, and
+    WordPress-private posts stay local until marked public."""
+    return PostStatus.PUBLIC if status == "publish" else PostStatus.PRIVATE
+
+
 HEADERS = {"User-Agent": f"wpsync/{__version__}"}
 
 
@@ -105,7 +106,9 @@ def fingerprint(post: dict[str, Any]) -> str:
 def remote_state(post: dict[str, Any]) -> RemoteState:
     blocks = "<!-- wp:" in post["content"]["raw"]
     return RemoteState(
-        fingerprint(post), ContentFormat.BLOCKS if blocks else ContentFormat.HTML
+        fingerprint(post),
+        ContentFormat.BLOCKS if blocks else ContentFormat.HTML,
+        post["status"] == "publish",
     )
 
 
@@ -176,13 +179,9 @@ class WordPressClient:
     def post_summaries(self) -> list[PostSummary]:
         return [
             PostSummary(
-                id=str(post["id"]),
-                title=post["title"]["raw"],
-                slug=post["slug"],
-                status=STATUSES[post["status"]],
-                date=parse_gmt(post["date_gmt"]),
+                id=str(post["id"]), title=post["title"]["raw"], slug=post["slug"]
             )
-            for post in self.posts("id,title,slug,status,date_gmt")
+            for post in self.posts("id,title,slug")
         ]
 
     def post_states(self, ids: list[str]) -> dict[str, RemoteState]:

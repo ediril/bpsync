@@ -82,7 +82,7 @@ id: 123
 title: Hello world
 slug: hello-world
 date: 2026-10-01T09:30:00+02:00
-status: published
+status: public
 categories:
 - News
 tags:
@@ -95,8 +95,12 @@ The post body in Markdown.
 - `id` links the file to a WordPress post. Leave it out for a new post.
 - `title`, `slug`, and `date` are optional. A `date` needs a time zone offset
   or `Z`.
-- `status` is one of `draft`, `published`, `scheduled`, `pending`, or
-  `private`, and defaults to `draft`.
+- `status` is `public` or `private`, and defaults to `private`. Push publishes
+  a public post; a public post with a future `date` is scheduled. Push never
+  sends a private post, except to turn a published post that became private
+  into a WordPress draft, which keeps its ID, comments, and address for when it
+  is made public again. Pull writes published posts as `public` and drafts,
+  scheduled, pending, and WordPress-private posts as `private`.
 - `categories` and `tags` are lists of names.
 
 The body is Markdown. Styling that plain Markdown cannot express uses
@@ -144,6 +148,12 @@ are an error.
 `images/` and referenced from the Markdown. The copy of an image that the post
 displays is downloaded, usually WordPress's resized `large` copy.
 
+If an image's file is gone from the server, or the server answers with something
+other than an image, pull names it on the post's line and
+carries on. The image stays in the Markdown as its original HTML, with its
+WordPress URL. Any other download failure, such as a server error, stops the
+pull; rerun it to continue.
+
 ```console
 wpsync pull          # every post
 wpsync pull 123      # one post, by ID
@@ -152,10 +162,10 @@ wpsync pull -y       # answer yes to every question
 ```
 
 ```text
-+ r  123  posts/hello-world.md  2 images
-~ r  145  posts/release-notes.md
-?    150  posts/about.md  changed on both sides; your file is unchanged
-+ r  160  posts/gallery-tour.md  kept as HTML: core/gallery
++  123  posts/hello-world.md  2 images
+~  145  posts/release-notes.md
+?  150  posts/about.md  changed on both sides; your file is unchanged
++  160  posts/gallery-tour.md  kept as HTML: core/gallery
 Pulled 3 posts (2 new, 1 updated), 2 images; 1 skipped. Rerun pull with --yes to accept the skipped changes.
 ```
 
@@ -202,10 +212,12 @@ wpsync --legend      # explain the status symbols
 ?    150  posts/about.md  content; also changed on WordPress since the last sync
 - l  160  posts/old.md  deleted locally; WordPress keeps the post
 + l    -  posts/new-idea.md  new post
-Not shown: 12 unchanged (-a to show)
+~ l  170  posts/old-news.md  unpublish; becomes a draft on WordPress
+Not shown: 12 unchanged, 3 private (-a to show)
 ```
 
 `content` means the body changed and `details` means a header field changed.
+Private posts (`x l`) are listed with `-a`; their edits stay local.
 `diff` never changes anything. It contacts the blog only for posts that changed
 locally, to check whether they also changed on WordPress since the last sync,
 and for new files, to check their slugs and titles against existing posts. A

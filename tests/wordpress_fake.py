@@ -28,6 +28,7 @@ class FakeWordPress:
         self.advertises_api = advertises_api
         self.can_edit = can_edit
         self.requests = []
+        self.broken_uploads = {}
         self.posts = [
             {
                 "id": number,
@@ -62,7 +63,17 @@ class FakeWordPress:
     def __call__(self, request):
         self.requests.append(request)
         if request.url.path.startswith("/wp-content/uploads/"):
-            return httpx.Response(200, content=b"image:" + request.url.path.encode())
+            if request.url.path in self.broken_uploads:
+                return httpx.Response(
+                    self.broken_uploads[request.url.path],
+                    headers={"Content-Type": "text/html"},
+                    text="<html></html>",
+                )
+            return httpx.Response(
+                200,
+                headers={"Content-Type": "image/jpeg"},
+                content=b"image:" + request.url.path.encode(),
+            )
         route = self.route(request)
         if route is None or not self.advertises_api:
             link = f'<{self.api_root}>; rel="https://api.w.org/"'

@@ -9,15 +9,15 @@ from urllib.parse import unquote
 
 import httpx
 
-from wpsync.media import Media
+from wpsync.media import Media, MissingImage
 from wpsync.posts import Conversion, FetchedPost, Post
 from wpsync.wordpress.client import (
     FINGERPRINT_FIELDS,
     HEADERS,
-    STATUSES,
     TIMEOUT,
     WordPressClient,
     WordPressError,
+    local_status,
     parse_gmt,
     remote_state,
     request,
@@ -58,10 +58,15 @@ class WordPressRemote:
 
     def download(self, url: str) -> bytes:
         response = request(self.downloads, "GET", url)
+        if response.status_code in (404, 410):
+            raise MissingImage(url)
         if response.is_error:
             raise WordPressError(
                 f"could not download {url} (HTTP {response.status_code})"
             )
+        # Some servers answer a missing file with a web page and a 200.
+        if not response.headers.get("content-type", "").startswith("image/"):
+            raise MissingImage(url)
         return response.content
 
     def _fetched(self, post: dict[str, Any]) -> FetchedPost:
@@ -74,7 +79,7 @@ class WordPressRemote:
             title=post["title"]["raw"],
             slug=unquote(post["slug"]),
             date=parse_gmt(post["date_gmt"]).astimezone(self._timezone),
-            status=STATUSES[post["status"]],
+            status=local_status(post["status"]),
             categories=tuple(
                 sorted({names["categories"][i] for i in post["categories"]})
             ),

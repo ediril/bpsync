@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TextIO
@@ -49,6 +50,7 @@ MARKER_COLORS = {
     "~": "\033[33m",
     "-": "\033[31m",
     "?": "\033[35m",
+    "x": "\033[90m",
     "l": "\033[38;5;51m",
     "r": "\033[38;5;30m",
 }
@@ -58,6 +60,7 @@ LEGEND = (
     ("- l", "deleted locally; WordPress keeps the post"),
     ("?  ", "conflict or ambiguous match; push stops and asks"),
     ("=  ", "unchanged (shown with -a)"),
+    ("x l", "private; push never sends it (shown with -a)"),
 )
 
 
@@ -555,22 +558,29 @@ def _diff(arguments: argparse.Namespace, session: _Session) -> str:
     if not result.entries:
         return NO_POSTS
     color = _use_color(session.stdout, session.environ)
-    shown = [
-        e for e in result.entries if arguments.all or e.action is not Action.UNCHANGED
-    ]
-    hidden = len(result.entries) - len(shown)
+    quiet = (Action.UNCHANGED, Action.PRIVATE)
+    shown = [e for e in result.entries if arguments.all or e.action not in quiet]
+    hidden = Counter(e.action for e in result.entries if e not in shown)
     width = max((len(e.post_id or "-") for e in shown), default=1)
     lines = [_entry_line(entry, color, width) for entry in shown]
     if not shown:
         lines.append("No local changes.")
     if hidden:
-        lines.append(f"Not shown: {hidden} unchanged (-a to show)")
+        counts = [
+            f"{hidden[action]} {action.name.lower()}"
+            for action in quiet
+            if hidden[action]
+        ]
+        lines.append(f"Not shown: {', '.join(counts)} (-a to show)")
     lines.extend(f"Note: {note}" for note in result.notes)
     return "\n".join(lines)
 
 
-def _entry_line(entry: DiffEntry, color: bool, width: int = 1) -> str:
-    marker = _paint(f"{entry.action} {entry.side or ' '}", color)
+def _entry_line(
+    entry: DiffEntry, color: bool, width: int = 1, sides: bool = True
+) -> str:
+    marker = f"{entry.action} {entry.side or ' '}" if sides else entry.action.value
+    marker = _paint(marker, color)
     detail = f"  {entry.detail}" if entry.detail else ""
     return f"{marker}  {entry.post_id or '-':>{width}}  {entry.path}{detail}"
 
@@ -614,7 +624,7 @@ def _pull(arguments: argparse.Namespace, session: _Session) -> str:
         return interactive and session.confirm(f"{question} [y/N] ", default=False)
 
     def report(entry: DiffEntry) -> None:
-        print(_entry_line(entry, color), file=session.stdout, flush=True)
+        print(_entry_line(entry, color, sides=False), file=session.stdout, flush=True)
 
     client = WordPressClient(
         profile.api_root, profile.username, session.password(profile), session.transport
