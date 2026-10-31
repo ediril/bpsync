@@ -193,15 +193,18 @@ rather than on their own, keep their WordPress address and are not downloaded.
 ## Seeing what changed
 
 Local files are the source of truth. `ls` lists the posts in the profile folder
-without contacting the blog, with their addresses on the blog as of the last
-pull:
+without contacting the blog. On a terminal, it cuts lines to fit instead of
+letting them wrap:
 
 ```console
 $ wpsync ls
-ID  Attr  Slug  Title  File           URL                      Issues
-67  p     hurt  Hurt   posts/hurt.md  https://blog.test/hurt/  2
- -  -     -     Idea   posts/idea.md  -                        -
+ID  Attr  Issues  Title (file)
+67  p     2       Hurt (hurt.md)
+ -  -     -       Idea (idea.md)
 ```
+
+`wpsync ls -l` prints every column in full, adding each post's slug, file, and
+address on the blog as of the last pull.
 
 `Attr` shows `p` for a public post. `Issues` counts what is wrong with a post;
 `show` says what, for one post chosen by ID, slug, file, or title:

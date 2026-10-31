@@ -1,15 +1,7 @@
-import io
-
 import pytest
-from wordpress_fake import FakeWordPress, add_profile, invoke
+from wordpress_fake import FakeWordPress, Terminal, add_profile, invoke
 
 from wpsync.documents import Document, Post, write_document
-
-
-class Terminal(io.StringIO):
-    def isatty(self):
-        return True
-
 
 IMAGE_URL = "https://blog.test/wp-content/uploads/2026/01/sunset-1024x768.jpg"
 
@@ -81,6 +73,18 @@ def test_first_pull_writes_posts_and_images_that_diff_then_sees_as_synced(
         "No local changes.\nNot shown: 2 unchanged (-a to show)\n",
     )
     assert wordpress.requests == []
+
+
+def test_a_title_is_written_as_readers_see_it(tmp_path, store):
+    wordpress = blog()
+    wordpress.post(2)["title"]["raw"] = "Riffs &amp; Ponders"
+    add_profile(store, "myblog", tmp_path)
+
+    pull(store, wordpress)
+
+    assert "title: Riffs & Ponders\n" in (tmp_path / "posts/post-2.md").read_text()
+    status, output, _ = invoke(["myblog", "diff"], store, wordpress=wordpress)
+    assert output.startswith("No local changes.")
 
 
 def test_later_pulls_update_unedited_files_and_ask_before_replacing_edits(
@@ -205,7 +209,7 @@ def test_a_missing_image_stays_counted_until_a_pull_restores_it_under_your_edits
 
     def issues():
         output = invoke(["myblog", "ls"], store, wordpress=wordpress, password=None)[1]
-        return output.splitlines()[1].split()[-1]
+        return output.splitlines()[1].split()[2]
 
     assert issues() == "1"
     _, output, _ = invoke(["myblog", "show", "1"], store, wordpress=wordpress)

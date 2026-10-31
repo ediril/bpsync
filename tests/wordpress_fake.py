@@ -133,8 +133,15 @@ class FakeWordPress:
         )
 
 
-def invoke(arguments, store, *, stdin="", wordpress=None, password=PASSWORD):
-    stdout, stderr = io.StringIO(), io.StringIO()
+class Terminal(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def invoke(
+    arguments, store, *, stdin="", wordpress=None, password=PASSWORD, stdout=None
+):
+    stdout, stderr = stdout or io.StringIO(), io.StringIO()
     status = run(
         arguments,
         store=store,

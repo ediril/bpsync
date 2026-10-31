@@ -17,6 +17,7 @@ from wpsync.wordpress.client import (
     TIMEOUT,
     WordPressClient,
     WordPressError,
+    display_title,
     local_status,
     parse_gmt,
     remote_state,
@@ -84,7 +85,7 @@ class WordPressRemote:
             taxonomy: self._term_names(taxonomy) for taxonomy in ("categories", "tags")
         }
         fields = Post(
-            title=post["title"]["raw"],
+            title=display_title(post),
             slug=unquote(post["slug"]),
             date=parse_gmt(post["date_gmt"]).astimezone(self._timezone),
             status=local_status(post["status"]),

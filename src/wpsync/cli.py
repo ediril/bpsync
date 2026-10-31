@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
+import unicodedata
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TextIO
 
 import httpx
@@ -21,7 +23,7 @@ from wpsync.config import (
     validate_environment_name,
     validate_profile_name,
 )
-from wpsync.documents import DocumentError, LocalDocument, scan_documents
+from wpsync.documents import POSTS_DIR, DocumentError, LocalDocument, scan_documents
 from wpsync.posts import PostStatus, PostSummary, RemoteState
 from wpsync.pull import Puller
 from wpsync.state import StateError, read_media, read_records
@@ -249,11 +251,17 @@ def build_parser() -> argparse.ArgumentParser:
         description="List profiles; * marks the one containing this directory.",
     )
 
-    subparsers.add_parser(
+    ls = subparsers.add_parser(
         "ls",
         help="list local posts and how many issues each has",
-        usage="wpsync ls\n       wpsync PROFILE ls",
-        description="List the post files in this profile without contacting the blog.",
+        usage="wpsync ls [-l]\n       wpsync PROFILE ls [-l]",
+        description=(
+            "List the post files in this profile without contacting the blog. On a "
+            "terminal, lines are cut to fit; -l prints every column in full."
+        ),
+    )
+    ls.add_argument(
+        "-l", "--long", action="store_true", help="also show slugs, files, and URLs"
     )
 
     show = subparsers.add_parser(
@@ -535,32 +543,58 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
         return (post_id is None, int(post_id) if post_id else 0, str(item.path))
 
     records = read_records(profile.local_root, profile.api_root)
-    rows = [("ID", "Attr", "Slug", "Title", "File", "URL", "Issues")]
+    if arguments.long:
+        rows = [("ID", "Attr", "Slug", "Title", "File", "URL", "Issues")]
+    else:
+        rows = [("ID", "Attr", "Issues", "Title (file)")]
     for item in sorted(documents, key=order):
         post = item.document.post
-        post_id = item.document.post_id
-        record = records.get(post_id) if post_id else None
-        rows.append(
-            (
-                post_id or "-",
-                "p" if post.status is PostStatus.PUBLIC else "-",
-                post.slug or "-",
-                post.title or "(no title)",
-                str(item.path),
-                record.url if record else "-",
-                str(len(record.missing_files))
-                if record and record.missing_files
-                else "-",
-            )
-        )
+        post_id = item.document.post_id or "-"
+        record = records.get(post_id)
+        attr = "p" if post.status is PostStatus.PUBLIC else "-"
+        title = post.title or "(no title)"
+        missing = record.missing_files if record else ()
+        issues = str(len(missing)) if missing else "-"
+        if arguments.long:
+            url = record.url if record else "-"
+            slug = post.slug or "-"
+            rows.append((post_id, attr, slug, title, str(item.path), url, issues))
+        else:
+            name = PurePosixPath(item.path).relative_to(POSTS_DIR)
+            rows.append((post_id, attr, issues, f"{title} ({name})"))
     widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
-    return "\n".join(
+    lines = [
         "  ".join(
             cell.rjust(width) if index == 0 else cell.ljust(width)
             for index, (cell, width) in enumerate(zip(row, widths, strict=True))
         ).rstrip()
         for row in rows
-    )
+    ]
+    is_terminal = getattr(session.stdout, "isatty", None)
+    if not arguments.long and is_terminal and is_terminal():
+        columns = shutil.get_terminal_size().columns
+        lines = [_fit(line, columns) for line in lines]
+    return "\n".join(lines)
+
+
+def _cells(character: str) -> int:
+    """How many terminal columns a character takes."""
+    if unicodedata.category(character) in ("Mn", "Me"):
+        return 0
+    return 2 if unicodedata.east_asian_width(character) in ("W", "F") else 1
+
+
+def _fit(line: str, columns: int) -> str:
+    """Cut a line to the terminal's width, so that it does not wrap."""
+    if sum(map(_cells, line)) <= columns:
+        return line
+    kept, used = [], 0
+    for character in line:
+        used += _cells(character)
+        if used > columns - 1:
+            break
+        kept.append(character)
+    return "".join(kept) + "…"
 
 
 def _show(arguments: argparse.Namespace, session: _Session) -> str:

@@ -1,6 +1,6 @@
 from pathlib import Path, PurePosixPath
 
-from wordpress_fake import SITE, FakeWordPress, add_profile, invoke
+from wordpress_fake import SITE, FakeWordPress, Terminal, add_profile, invoke
 
 from wpsync.documents import Document, body_checksum, fields_checksum, write_document
 from wpsync.posts import ContentFormat, Post, PostStatus
@@ -146,19 +146,29 @@ def test_one_post_is_selected_by_id_slug_or_path(tmp_path, store, monkeypatch):
     assert "no local post has slug or title 'post-9'" in errors
 
 
-def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store):
+def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store, monkeypatch):
     wordpress = FakeWordPress(post_count=12)
     add_profile(store, "myblog", tmp_path)
     synced(tmp_path, wordpress, 12, "twelve.md")
     synced(tmp_path, wordpress, 3, "three.md")
     new_post(tmp_path, "idea.md", title="Idea")
 
-    status, output, _ = invoke(
-        ["myblog", "ls"], store, wordpress=wordpress, password=None
-    )
+    def ls(*arguments, stdout=None):
+        return invoke(
+            ["myblog", "ls", *arguments],
+            store,
+            wordpress=wordpress,
+            password=None,
+            stdout=stdout,
+        )[1].splitlines()
 
-    assert status == 0
-    assert output.splitlines() == [
+    assert ls() == [
+        "ID  Attr  Issues  Title (file)",
+        " 3  p     -       Post 3 (three.md)",
+        "12  p     -       Post 12 (twelve.md)",
+        " -  p     -       Idea (idea.md)",
+    ]
+    assert ls("-l") == [
         "ID  Attr  Slug     Title    File             URL"
         "                         Issues",
         " 3  p     post-3   Post 3   posts/three.md   https://blog.test/post-3/   -",
@@ -166,6 +176,14 @@ def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store):
         " -  p     -        Idea     posts/idea.md    -                           -",
     ]
     assert wordpress.requests == []
+
+    monkeypatch.setenv("COLUMNS", "24")
+    assert ls(stdout=Terminal()) == [
+        "ID  Attr  Issues  Title…",
+        " 3  p     -       Post …",
+        "12  p     -       Post …",
+        " -  p     -       Idea …",
+    ]
 
 
 def test_show_finds_a_post_by_id_slug_file_or_title(tmp_path, store):

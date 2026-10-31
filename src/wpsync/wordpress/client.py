@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, timezone, tzinfo
@@ -103,6 +104,11 @@ def fingerprint(post: dict[str, Any]) -> str:
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
+def display_title(post: dict[str, Any]) -> str:
+    """A post's title as readers see it; WordPress may store `&` as `&amp;`."""
+    return html.unescape(post["title"]["raw"])
+
+
 def remote_state(post: dict[str, Any]) -> RemoteState:
     blocks = "<!-- wp:" in post["content"]["raw"]
     return RemoteState(
@@ -179,7 +185,7 @@ class WordPressClient:
     def post_summaries(self) -> list[PostSummary]:
         return [
             PostSummary(
-                id=str(post["id"]), title=post["title"]["raw"], slug=post["slug"]
+                id=str(post["id"]), title=display_title(post), slug=post["slug"]
             )
             for post in self.posts("id,title,slug")
         ]
