@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -11,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from wpsync.posts import ContentFormat
 
 STATE_PATH = Path(".wpsync") / "state.db"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA = """
 CREATE TABLE site (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -23,7 +24,9 @@ CREATE TABLE posts (
     body_checksum TEXT NOT NULL,
     fields_checksum TEXT NOT NULL,
     remote_fingerprint TEXT NOT NULL,
-    remote_format TEXT NOT NULL CHECK (remote_format IN ('blocks', 'html'))
+    remote_format TEXT NOT NULL CHECK (remote_format IN ('blocks', 'html')),
+    url TEXT NOT NULL,
+    missing_images TEXT NOT NULL
 );
 CREATE TABLE media (
     path TEXT PRIMARY KEY,
@@ -48,6 +51,10 @@ class PostRecord:
     fields_checksum: str
     remote_fingerprint: str
     remote_format: ContentFormat
+    url: str
+    """Where the post is on the blog."""
+    missing_images: tuple[str, ...]
+    """Images the post shows whose files were gone at the last pull."""
 
 
 @dataclass(frozen=True)
@@ -98,7 +105,7 @@ def read_records(root: Path, api_root: str) -> dict[str, PostRecord]:
             return {}
         rows = connection.execute(
             "SELECT post_id, path, body_checksum, fields_checksum, "
-            "remote_fingerprint, remote_format FROM posts"
+            "remote_fingerprint, remote_format, url, missing_images FROM posts"
         ).fetchall()
     return {
         row[0]: PostRecord(
@@ -108,6 +115,8 @@ def read_records(root: Path, api_root: str) -> dict[str, PostRecord]:
             row[3],
             row[4],
             ContentFormat(row[5]),
+            row[6],
+            tuple(json.loads(row[7])),
         )
         for row in rows
     }
@@ -131,7 +140,7 @@ class StateWriter:
 
     def save(self, record: PostRecord) -> None:
         self.connection.execute(
-            "INSERT OR REPLACE INTO posts VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO posts VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 record.post_id,
                 str(record.path),
@@ -139,6 +148,8 @@ class StateWriter:
                 record.fields_checksum,
                 record.remote_fingerprint,
                 record.remote_format.value,
+                record.url,
+                json.dumps(record.missing_images),
             ),
         )
 

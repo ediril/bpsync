@@ -59,6 +59,8 @@ class FetchedPost:
     state: RemoteState
     name: str
     """The file name stem the post prefers, usually its slug."""
+    url: str
+    """Where the post is on the blog."""
 
 
 @dataclass(frozen=True)

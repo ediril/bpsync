@@ -30,6 +30,8 @@ def synced(root, wordpress, post_id, name):
                 fields_checksum(post),
                 fingerprint(remote),
                 ContentFormat.HTML,
+                remote["link"],
+                (),
             )
         )
     return root / path
@@ -157,10 +159,10 @@ def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store):
 
     assert status == 0
     assert output.splitlines() == [
-        "ID  Slug     Title    File",
-        " 3  post-3   Post 3   posts/three.md",
-        "12  post-12  Post 12  posts/twelve.md",
-        " -  -        Idea     posts/idea.md",
+        "ID  Slug     Title    URL                         File",
+        " 3  post-3   Post 3   https://blog.test/post-3/   posts/three.md",
+        "12  post-12  Post 12  https://blog.test/post-12/  posts/twelve.md",
+        " -  -        Idea     -                           posts/idea.md",
     ]
     assert wordpress.requests == []
 

@@ -58,11 +58,14 @@ class PullResult:
     def summary(self) -> str:
         pulled = self.new + self.updated + self.linked
         if not pulled and not self.skipped:
-            kept = self.changes_kept
-            if kept:
-                posts = f"{kept} post{'s' * (kept != 1)}"
-                return f"Nothing to pull; {posts} with local changes."
-            return "Nothing to pull."
+            notes = ["Nothing to pull"]
+            if self.changes_kept:
+                kept = self.changes_kept
+                notes.append(f"{kept} post{'s' * (kept != 1)} with local changes")
+            if self.missing_images:
+                missing = self.missing_images
+                notes.append(f"{missing} image{'s' * (missing != 1)} missing")
+            return "; ".join(notes) + "."
         parts = [
             f"{count} {label}"
             for count, label in (
@@ -165,6 +168,7 @@ class Puller:
         )
         if post.state.fingerprint == record.remote_fingerprint:
             self.result.changes_kept += changed_locally
+            self._refresh(post, document, record, changed_locally)
             return
         path = PurePosixPath(document.path)
         if changed_locally and not self.confirm(
@@ -176,6 +180,35 @@ class Puller:
         if self._write(post, path, document.document, Action.CHANGED):
             self.result.updated += 1
 
+    def _refresh(
+        self,
+        post: FetchedPost,
+        document: LocalDocument,
+        record: PostRecord,
+        changed_locally: bool,
+    ) -> None:
+        """Bring an unchanged post's address and missing images up to date."""
+        missing = tuple(
+            url for url in record.missing_images if not self._downloads(url)
+        )
+        if missing != record.missing_images and not changed_locally:
+            path = PurePosixPath(document.path)
+            if self._write(post, path, document.document, Action.CHANGED):
+                self.result.updated += 1
+            return
+        self.result.missing_images += len(missing)
+        current = replace(record, url=post.url, missing_images=missing)
+        if current != record:
+            with write_state(self.root, self.api_root) as state:
+                state.save(current)
+
+    def _downloads(self, url: str) -> bool:
+        try:
+            self.remote.download(url)
+        except MissingImage:
+            return False
+        return True
+
     def _pull_unrecorded(self, post: FetchedPost, document: LocalDocument) -> None:
         path = PurePosixPath(document.path)
         conversion = self._convert(post, path)
@@ -185,7 +218,7 @@ class Puller:
         if remote == document.document.post:
             for download in self.library.take_pending():
                 self.library.release(download)
-            self._record(post, path, document.document, [])
+            self._record(post, path, document.document, [], [])
             self._line(Action.UNCHANGED, post.id, path, "linked; already identical")
             self.result.linked += 1
             return
@@ -267,7 +300,7 @@ class Puller:
             existing.extra,
         )
         write_text_atomic(self.root / path, serialize_document(written), mode=0o644)
-        self._record(post, path, written, images)
+        self._record(post, path, written, images, missing)
         self.result.images += len(images)
         self.result.missing_images += len(missing)
         details = []
@@ -329,6 +362,7 @@ class Puller:
         path: PurePosixPath,
         document: Document,
         images: list[MediaRecord],
+        missing: list[str],
     ) -> None:
         # Checksums describe the file as it reads back, exactly as diff will see it.
         written = parse_document(serialize_document(document)).post
@@ -343,6 +377,8 @@ class Puller:
                     fields_checksum(written),
                     post.state.fingerprint,
                     post.state.format,
+                    post.url,
+                    tuple(missing),
                 )
             )
 

@@ -1,7 +1,5 @@
 # Work Queue
 
-- [ ] `ls` shows each post's WordPress URL, stored in the state database at pull,
-  and which posts have broken images (how it detects them is undecided).
 - [ ] `push`: create and update posts with changed fields only, slug and
   title checks before creating a post (see the matching decision), writing the
   slug WordPress assigns back into the file, conflict and format-change

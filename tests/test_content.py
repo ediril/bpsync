@@ -6,6 +6,7 @@ import pytest
 
 from wpsync.markup.dom import canonical, parse_html
 from wpsync.media import MediaImage
+from wpsync.posts import Conversion
 from wpsync.wordpress.autop import autop
 from wpsync.wordpress.content import (
     EDITOR_CLASSES,
@@ -119,6 +120,30 @@ def test_content_without_a_markdown_form_is_kept_as_its_exact_source():
     )
     html = render_html(result.markdown, media)
     assert html == "<!-- wp:latest-posts /-->\n\n" + GALLERY + "\n\n<p>After</p>"
+
+
+@pytest.mark.parametrize(
+    "raw, markdown",
+    [
+        ("<p>One</p>\n<p></p>\n<p>Two</p>", "One\n\nTwo"),
+        ("<p>One</p>\n<p>&nbsp;</p>\n<p>Two</p>", "One\n\nTwo"),
+        ("<p>One</p>\n<p><br></p>\n<p>Two</p>", "One\n\nTwo"),
+        ("<p>One</p>\n<p><strong>&nbsp;</strong><br></p>\n<p>Two</p>", "One\n\nTwo"),
+        ("<p>One<br><br></p>", "One"),
+        ("<p><br>One</p>", "One"),
+        ("<p>One<br><br>Two</p>", "One\n\nTwo"),
+        ("<ul>\n<li>One<br></li>\n</ul>", "- One"),
+    ],
+)
+def test_markup_used_only_for_vertical_space_is_dropped(raw, markdown):
+    assert to_markdown(raw, MemoryMedia()) == Conversion(markdown, ())
+
+
+@pytest.mark.parametrize("raw", ['<p class="gap"></p>', '<p id="top">&nbsp;</p>'])
+def test_a_blank_paragraph_with_attributes_is_kept(raw):
+    result = to_markdown(raw, MemoryMedia())
+    assert raw in result.markdown
+    assert result.kept
 
 
 def test_classic_content_is_read_with_wordpress_paragraph_rules():

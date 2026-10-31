@@ -35,6 +35,7 @@ class FakeWordPress:
                 "title": {"raw": f"Post {number}"},
                 "content": {"raw": f"<p>Body {number}</p>"},
                 "slug": f"post-{number}",
+                "link": f"https://blog.test/post-{number}/",
                 "status": "publish" if number % 2 else "draft",
                 "date_gmt": f"2026-01-{number % 28 + 1:02d}T10:00:00",
                 "categories": [1],

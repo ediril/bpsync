@@ -24,7 +24,7 @@ from wpsync.wordpress.client import (
 )
 from wpsync.wordpress.content import to_markdown
 
-PULL_FIELDS = FINGERPRINT_FIELDS + ",generated_slug"
+PULL_FIELDS = FINGERPRINT_FIELDS + ",generated_slug,link"
 
 
 class WordPressRemote:
@@ -91,6 +91,7 @@ class WordPressRemote:
             post["content"]["raw"],
             remote_state(post),
             _file_stem(post),
+            post["link"],
         )
 
     def _term_names(self, taxonomy: str) -> dict[int, str]:

@@ -24,7 +24,7 @@ from wpsync.config import (
 from wpsync.documents import DocumentError, LocalDocument, scan_documents
 from wpsync.posts import PostSummary, RemoteState
 from wpsync.pull import Puller
-from wpsync.state import StateError, read_media, read_records
+from wpsync.state import PostRecord, StateError, read_media, read_records
 from wpsync.sync import Action, DiffEntry, SelectionError, compare, select
 from wpsync.wordpress.client import WordPressClient, WordPressError, discover_api_root
 from wpsync.wordpress.remote import WordPressRemote
@@ -518,26 +518,32 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
         post_id = item.document.post_id
         return (post_id is None, int(post_id) if post_id else 0, str(item.path))
 
-    rows = [
-        (
-            item.document.post_id or "-",
-            item.document.post.slug or "-",
-            item.document.post.title or "(no title)",
-            str(item.path),
+    records = read_records(profile.local_root, profile.api_root)
+
+    def broken(record: PostRecord | None) -> str:
+        count = len(record.missing_images) if record else 0
+        return f"  {count} broken image{'s' * (count != 1)}" if count else ""
+
+    rows = [("ID", "Slug", "Title", "URL", "File", "")]
+    for item in sorted(documents, key=order):
+        post_id = item.document.post_id
+        record = records.get(post_id) if post_id else None
+        rows.append(
+            (
+                post_id or "-",
+                item.document.post.slug or "-",
+                item.document.post.title or "(no title)",
+                record.url if record else "-",
+                str(item.path),
+                broken(record),
+            )
         )
-        for item in sorted(documents, key=order)
-    ]
-    widths = [
-        max(len(row[i]) for row in rows + [("ID", "Slug", "Title", "")])
-        for i in range(3)
-    ]
-    header = f"{'ID':>{widths[0]}}  {'Slug':<{widths[1]}}  {'Title':<{widths[2]}}  File"
-    lines = [header]
-    lines.extend(
-        f"{post_id:>{widths[0]}}  {slug:<{widths[1]}}  {title:<{widths[2]}}  {path}"
-        for post_id, slug, title, path in rows
+    widths = [max(len(row[i]) for row in rows) for i in range(4)]
+    return "\n".join(
+        f"{post_id:>{widths[0]}}  {slug:<{widths[1]}}  {title:<{widths[2]}}  "
+        f"{url:<{widths[3]}}  {path}{note}"
+        for post_id, slug, title, url, path, note in rows
     )
-    return "\n".join(lines)
 
 
 def _diff(arguments: argparse.Namespace, session: _Session) -> str:

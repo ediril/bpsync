@@ -29,6 +29,7 @@ EDGE_SPACE_TAGS = frozenset({"strong", "em"})
 EMPTY_FORMATTING_TAGS = frozenset({"strong", "em", "b", "i", "span"})
 WHITESPACE = re.compile(r"[ \t\n\r\f]+")
 HTML_SPACE = " \t\n\r\f"
+NO_BREAK_SPACE = "\xa0"
 LAYOUT_STYLE = re.compile(r"(?:^|;)\s*(?:white-space|display)\s*:", re.IGNORECASE)
 NAMESPACE_PREFIXES = {
     "http://www.w3.org/1999/xlink": "xlink",
@@ -157,10 +158,12 @@ def _breaks_line(node: Node | None) -> bool:
 def trim_block_whitespace(
     nodes: list[Node], *, block_context: bool = True
 ) -> list[Node]:
-    """Drop whitespace that cannot affect display.
+    """Drop whitespace that cannot affect display, and spacing made of markup.
 
     Browsers do not display whitespace around block elements or at the start
     and end of a line, including inside inline elements at those positions.
+    Blank paragraphs and repeated line breaks are how authors force vertical
+    space in WordPress, which is not content: Markdown has no use for them.
     """
     result: list[Node] = []
     for node in nodes:
@@ -168,23 +171,75 @@ def trim_block_whitespace(
             children = trim_block_whitespace(
                 node.children, block_context=is_block(node)
             )
+            if is_block(node):
+                children = _trim_breaks(children)
+            if node.tag == "p" and not node.attrs:
+                result.extend(Element("p", {}, part) for part in _paragraphs(children))
+                continue
             node = Element(node.tag, node.attrs, children)
         result.append(node)
     result = _strip_after_breaks(result, block_context, leading=True)
     result.reverse()
     result = _strip_after_breaks(result, block_context, leading=False)
     result.reverse()
-    return [node for node in result if not _empty_formatting(node)]
+    return [node for node in result if not _displays_nothing(node)]
 
 
-def _empty_formatting(node: Node) -> bool:
-    """Plain bold, italic, or span with nothing inside displays nothing."""
+def _displays_nothing(node: Node) -> bool:
+    """Plain formatting with nothing inside, or a plain paragraph of blank lines."""
+    if not isinstance(node, Element) or node.attrs:
+        return False
+    if node.tag in EMPTY_FORMATTING_TAGS:
+        return not node.children
+    return node.tag == "p" and all(_is_filler(child) for child in node.children)
+
+
+def _is_break(node: Node) -> bool:
+    return node == Element("br")
+
+
+def _is_filler(node: Node) -> bool:
+    """Spaces, line breaks, or plain formatting holding only those."""
+    if isinstance(node, str):
+        return not node.strip(HTML_SPACE + NO_BREAK_SPACE)
     return (
         isinstance(node, Element)
-        and node.tag in EMPTY_FORMATTING_TAGS
         and not node.attrs
-        and not node.children
+        and (
+            node.tag == "br"
+            or (
+                node.tag in EMPTY_FORMATTING_TAGS
+                and all(_is_filler(child) for child in node.children)
+            )
+        )
     )
+
+
+def _trim_breaks(children: list[Node]) -> list[Node]:
+    start, end = 0, len(children)
+    while start < end and _is_break(children[start]):
+        start += 1
+    while end > start and _is_break(children[end - 1]):
+        end -= 1
+    return children[start:end]
+
+
+def _paragraphs(children: list[Node]) -> list[list[Node]]:
+    """Split a paragraph's content at blank lines made of repeated line breaks."""
+    parts: list[list[Node]] = [[]]
+    filler: list[Node] = []
+    for child in children:
+        if _is_filler(child):
+            filler.append(child)
+            continue
+        if sum(_is_break(node) for node in filler) > 1:
+            parts.append([])
+        else:
+            parts[-1].extend(filler)
+        filler = []
+        parts[-1].append(child)
+    parts[-1].extend(filler)
+    return parts
 
 
 def _strip_after_breaks(

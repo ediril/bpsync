@@ -487,7 +487,9 @@ def to_markdown(raw: str, media: Media) -> Conversion:
     units = _block_units(raw) if is_block_content(raw) else _classic_units(raw)
     converter = Converter(EDITOR_CLASSES)
     fragments = [_convert(unit, converter, media) for unit in units]
-    converted = [index for index, fragment in enumerate(fragments) if fragment]
+    converted = [
+        index for index, fragment in enumerate(fragments) if fragment is not None
+    ]
     expected = _comparable(display(raw))
 
     def document(chosen: list[int]) -> str:
@@ -495,7 +497,7 @@ def to_markdown(raw: str, media: Media) -> Conversion:
             fragments[index] if index in chosen else kept_markdown(unit.source)
             for index, unit in enumerate(units)
         ]
-        return join_blocks(parts)  # type: ignore[arg-type]
+        return join_blocks([part for part in parts if part])  # type: ignore[misc]
 
     def displays_alike(chosen: list[int]) -> bool:
         pushed = render_html(document(chosen), media)

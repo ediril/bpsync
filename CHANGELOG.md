@@ -20,6 +20,8 @@
   model of what WordPress displays. Anything that would display differently is
   kept as its exact original source, as plain HTML or in a ```` ```{=html} ````
   fence.
+  Blank paragraphs and repeated line breaks, used only to force vertical space,
+  are left out.
 - Post `status` is `public` or `private`, and new files are private. Push
   will publish public posts and never send private ones, except to turn a
   published post that became private into a draft. Pull writes published posts
@@ -30,7 +32,7 @@
   or new posts. A new file whose slug belongs to a post is a conflict, and a
   shared title is noted. Private posts are listed with `-a`, and a published
   post made private shows as `unpublish`. `ls` lists local posts by ID, slug,
-  and title.
+  title, and address on the blog, and shows broken images pull found.
 - `pull [POST]` brings posts into `posts/<slug>.md` and downloads the images
   they display into `images/`. Edited files are replaced, and unlinked files
   are linked, only after confirmation or `--yes`; pull never restores or
@@ -38,6 +40,7 @@
   An image whose file is gone from the server, or that comes back as something
   other than an image, is reported, and the post is still pulled with that
   image kept as its original HTML.
+  Later pulls try it again.
 - `scripts/publish.sh [--prepare]` builds, checks, and publishes releases to
   PyPI.
 

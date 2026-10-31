@@ -40,8 +40,9 @@ refuses to use the database with a different blog. For every linked post the
 `posts` table stores the post ID, the local path, two checksums of the file as
 of the last sync (one of the body, one of the synchronized header fields
 together), a fingerprint of the WordPress post as of the last sync (its title,
-content, slug, status, date, and category and tag IDs), and its content format
-(block or plain HTML). The media table arrives with pull. One pull or push of a
+content, slug, status, date, and category and tag IDs), its content format
+(block or plain HTML), its address on the blog, and the images pull found
+missing. The media table arrives with pull. One pull or push of a
 post updates its rows in a single transaction.
 
 A post changed locally when either checksum differs. Push sends the content

@@ -194,6 +194,32 @@ def test_a_missing_image_is_reported_and_stays_in_the_post_as_its_source(
     assert output.startswith("No local changes.")
 
 
+def test_ls_shows_a_missing_image_until_a_pull_finds_it_again(tmp_path, store):
+    wordpress, gone, _ = two_image_blog()
+    path = "/wp-content/uploads/2026/01/gone-1024x768.jpg"
+    wordpress.broken_uploads[path] = 404
+    add_profile(store, "myblog", tmp_path)
+    pull(store, wordpress)
+
+    def listing():
+        return invoke(["myblog", "ls"], store, wordpress=wordpress, password=None)[1]
+
+    assert "posts/post-1.md  1 broken image\n" in listing()
+
+    _, output, _ = pull(store, wordpress)
+    assert output == "Nothing to pull; 1 image missing.\n"
+    assert "1 broken image" in listing()
+
+    del wordpress.broken_uploads[path]
+    _, output, _ = pull(store, wordpress)
+    assert output.splitlines() == [
+        "~  1  posts/post-1.md  1 image",
+        "Pulled 1 post (1 updated), 1 image.",
+    ]
+    assert "![](images/gone-1024x768.jpg)" in (tmp_path / "posts/post-1.md").read_text()
+    assert "broken image" not in listing()
+
+
 def test_a_failed_download_stops_the_pull_without_leaving_part_of_a_post(
     tmp_path, store
 ):

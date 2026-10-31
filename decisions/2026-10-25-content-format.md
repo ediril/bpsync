@@ -100,6 +100,15 @@ bookkeeping classes the block editor adds to unstyled elements (such as
 `wp-block-heading` and `wp-block-list`). Inline styles that set `white-space`
 or `display` make whitespace significant.
 
+It also ignores markup authors use only to force vertical space: paragraphs
+without attributes that hold nothing but spaces, no-break spaces, and line
+breaks (`<p></p>`, `<p>&nbsp;</p>`, `<p><br></p>`), and line breaks at the start
+or end of a block. Two or more line breaks inside such a paragraph split it into
+two paragraphs. Some of these do show as blank lines, so this is the one place
+pull knowingly changes a post's display: spacing is a workaround for WordPress's
+editor rather than content, and keeping it would fill the Markdown with HTML. A
+post keeps its spacing on the blog until it is edited and pushed.
+
 Embed blocks without custom classes or alignment become their bare URL. Images
 from the site's media library are downloaded into `images/` and the Markdown
 references the local file; only images the final Markdown uses are downloaded.
@@ -107,6 +116,10 @@ An image whose file is gone from the server (HTTP 404 or 410, or a response that
 is not an image) is reported and kept as its exact source with its WordPress URL, so a dead image never keeps a
 post out of sync and a push sends its original markup; any other download
 failure stops the pull, so a passing outage cannot change how a post is stored.
+The state database records the post's missing images, so `ls` can show them
+without contacting the blog, and each pull tries them again and converts an
+unedited post once they are back. Only images pull would download are checked:
+not those inside kept HTML, in a line of text, or on other sites.
 A classic-editor image (`<p><img class="wp-image-N size-X">`) and a block-editor
 image figure are read as the same image, with alignment allowed on either
 element, so a classic post's images become Markdown images and are pushed back

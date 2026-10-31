@@ -154,6 +154,10 @@ carries on. The image stays in the Markdown as its original HTML, with its
 WordPress URL. Any other download failure, such as a server error, stops the
 pull; rerun it to continue.
 
+Blank paragraphs and repeated line breaks, which only force vertical space in
+WordPress, are left out of the Markdown. The post keeps that spacing on the blog
+until you edit and push it.
+
 ```console
 wpsync pull          # every post
 wpsync pull 123      # one post, by ID
@@ -189,11 +193,18 @@ rather than on their own, keep their WordPress address and are not downloaded.
 ## Seeing what changed
 
 Local files are the source of truth. `ls` lists the posts in the profile folder
-with their IDs and slugs, without contacting the blog:
+with their IDs, slugs, and addresses on the blog as of the last pull, and any
+broken images that pull found, without contacting the blog:
 
 ```console
-wpsync ls
+$ wpsync ls
+ID  Slug  Title  URL                      File
+67  hurt  Hurt   https://blog.test/hurt/  posts/hurt.md  1 broken image
+ -  -     Idea   -                        posts/idea.md
 ```
+
+Pull checks the images it downloads, and tries missing ones again each time. It
+does not check images inside kept HTML, in a line of text, or on other sites.
 
 `diff` shows what a push would change and anything that would stop it:
 
