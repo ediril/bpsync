@@ -149,10 +149,10 @@ are an error.
 displays is downloaded, usually WordPress's resized `large` copy.
 
 If an image's file is gone from the server, or the server answers with something
-other than an image, pull names it on the post's line and
-carries on. The image stays in the Markdown as its original HTML, with its
-WordPress URL. Any other download failure, such as a server error, stops the
-pull; rerun it to continue.
+other than an image, pull names it on the post's line and carries on. The
+Markdown refers to `images/<name>` as usual, and later pulls add the file if the
+server has it again. Any other download failure, such as a server error, stops
+the pull; rerun it to continue.
 
 Blank paragraphs and repeated line breaks, which only force vertical space in
 WordPress, are left out of the Markdown. The post keeps that spacing on the blog

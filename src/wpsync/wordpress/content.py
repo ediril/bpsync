@@ -69,7 +69,9 @@ WP_IMAGE_CLASS = re.compile(r"wp-image-(\d+)")
 SIZE_CLASS = re.compile(r"size-([\w-]+)")
 PLACEMENT_CLASS = re.compile(r"align(?:left|right|center|wide|full|none)")
 CAPTION_CLASS = "wp-element-caption"
-EMBED_ATTRS = frozenset({"url", "type", "providerNameSlug", "responsive"})
+RESIZED_CLASS = "is-resized"
+"""The class WordPress puts on the figure of an image given its own width."""
+EMBED_ATTRS = frozenset({"url", "type", "providerNameSlug", "responsive", "className"})
 EMBED_CLASS = re.compile(
     r"wp-block-embed(?:-[\w-]+)?|is-type-[\w-]+|is-provider-[\w-]+"
     r"|wp-embed-aspect-[\w-]+|wp-has-aspect-ratio"
@@ -150,6 +152,8 @@ def _image_figure(image: Element, media: Media) -> Element:
         figure_classes.append(f"size-{library.size}")
         image_classes.append(f"wp-image-{library.id}")
     figure_classes.extend(c for c in classes if PLACEMENT_CLASS.fullmatch(c))
+    if "width" in attrs or "width" in attrs.get("style", ""):
+        figure_classes.append(RESIZED_CLASS)
     if image_classes:
         attrs["class"] = " ".join(image_classes)
     children: list[Node] = [Element("img", attrs)]
@@ -284,7 +288,12 @@ def _block_unit(
 def _plain_embed_url(attrs: dict, inner: str) -> str | None:
     """The URL of an embed WordPress displays from its address alone."""
     url = attrs.get("url")
-    if not isinstance(url, str) or set(attrs) - EMBED_ATTRS:
+    classes = attrs.get("className", "").split()
+    if (
+        not isinstance(url, str)
+        or set(attrs) - EMBED_ATTRS
+        or not all(EMBED_CLASS.fullmatch(c) for c in classes)
+    ):
         return None
     figures = [n for n in parse_html(inner) if not _blank(n)]
     if len(figures) != 1 or not isinstance(figures[0], Element):
@@ -408,6 +417,7 @@ def _parse_image(node: Node) -> _Image | None:
                 WP_IMAGE_CLASS.fullmatch(c)
                 or SIZE_CLASS.fullmatch(c)
                 or PLACEMENT_CLASS.fullmatch(c)
+                or c == RESIZED_CLASS
             )
         )
 

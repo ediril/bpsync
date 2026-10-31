@@ -18,7 +18,7 @@ from wpsync.documents import (
     serialize_document,
 )
 from wpsync.markup.markdown import image_sources
-from wpsync.media import Download, Media, MediaLibrary, MissingImage
+from wpsync.media import Media, MediaLibrary, MissingImage
 from wpsync.posts import Conversion, FetchedPost, UnrepresentableContent
 from wpsync.state import MediaRecord, PostRecord, write_state
 from wpsync.storage import write_atomic, write_text_atomic
@@ -58,7 +58,9 @@ class PullResult:
     def summary(self) -> str:
         pulled = self.new + self.updated + self.linked
         if not pulled and not self.skipped:
-            notes = ["Nothing to pull"]
+            images = self.images
+            restored = f"Restored {images} image{'s' * (images != 1)}"
+            notes = [restored if images else "Nothing to pull"]
             if self.changes_kept:
                 kept = self.changes_kept
                 notes.append(f"{kept} post{'s' * (kept != 1)} with local changes")
@@ -168,7 +170,7 @@ class Puller:
         )
         if post.state.fingerprint == record.remote_fingerprint:
             self.result.changes_kept += changed_locally
-            self._refresh(post, document, record, changed_locally)
+            self._refresh(post, record)
             return
         path = PurePosixPath(document.path)
         if changed_locally and not self.confirm(
@@ -180,33 +182,39 @@ class Puller:
         if self._write(post, path, document.document, Action.CHANGED):
             self.result.updated += 1
 
-    def _refresh(
-        self,
-        post: FetchedPost,
-        document: LocalDocument,
-        record: PostRecord,
-        changed_locally: bool,
-    ) -> None:
+    def _refresh(self, post: FetchedPost, record: PostRecord) -> None:
         """Bring an unchanged post's address and missing images up to date."""
         missing = tuple(
-            url for url in record.missing_images if not self._downloads(url)
+            url for url in record.missing_images if not self._restore_image(url)
         )
-        if missing != record.missing_images and not changed_locally:
-            path = PurePosixPath(document.path)
-            if self._write(post, path, document.document, Action.CHANGED):
-                self.result.updated += 1
-            return
+        found = len(record.missing_images) - len(missing)
+        if found:
+            detail = f"{found} image{'s' * (found != 1)} restored"
+            self._line(Action.CHANGED, post.id, record.path, detail)
         self.result.missing_images += len(missing)
         current = replace(record, url=post.url, missing_images=missing)
         if current != record:
             with write_state(self.root, self.api_root) as state:
                 state.save(current)
 
-    def _downloads(self, url: str) -> bool:
+    def _restore_image(self, url: str) -> bool:
+        """Download an image that was missing, if the server has it again."""
+        image = self.library.at_url(url)
+        if image.checksum:
+            return True
         try:
-            self.remote.download(url)
+            data = self.remote.download(url)
         except MissingImage:
             return False
+        # A file put there by hand since is the user's: it stays, and differs
+        # from the checksum as any edited image does.
+        if not (self.root / image.path).exists():
+            write_atomic(self.root / image.path, data, mode=0o644)
+        restored = replace(image, checksum=hashlib.sha256(data).hexdigest())
+        self.library.add(restored)
+        with write_state(self.root, self.api_root) as state:
+            state.save_media(restored)
+        self.result.images += 1
         return True
 
     def _pull_unrecorded(self, post: FetchedPost, document: LocalDocument) -> None:
@@ -277,23 +285,33 @@ class Puller:
             conversion = self._convert(post, path)
             if conversion is None:
                 return False
-        fetched = self._fetch_images(post, path, conversion)
-        missing = self.library.take_missing()
-        if fetched is None:
-            return False
-        conversion, files = fetched
+        used = image_sources(conversion.markdown)
+        # Download first, so a failure leaves nothing of this post behind.
+        files = []
+        for download in self.library.take_pending():
+            if str(download.path) not in used:
+                self.library.release(download)
+                continue
+            try:
+                files.append((download, self.remote.download(download.url)))
+            except MissingImage:
+                files.append((download, None))
         images = []
         for download, data in files:
-            write_atomic(self.root / download.path, data, mode=0o644)
+            checksum = ""
+            if data is not None:
+                write_atomic(self.root / download.path, data, mode=0o644)
+                checksum = hashlib.sha256(data).hexdigest()
             image = MediaRecord(
-                download.path,
-                hashlib.sha256(data).hexdigest(),
-                download.media_id,
-                download.url,
-                download.size,
+                download.path, checksum, download.media_id, download.url, download.size
             )
             self.library.add(image)
             images.append(image)
+        missing = [
+            self.library.by_path[path].url
+            for path in map(PurePosixPath, sorted(used))
+            if path in self.library.by_path and not self.library.by_path[path].checksum
+        ]
         written = Document(
             post.id,
             replace(post.post, body=conversion.markdown.strip("\n")),
@@ -301,11 +319,12 @@ class Puller:
         )
         write_text_atomic(self.root / path, serialize_document(written), mode=0o644)
         self._record(post, path, written, images, missing)
-        self.result.images += len(images)
+        fetched = sum(data is not None for _, data in files)
+        self.result.images += fetched
         self.result.missing_images += len(missing)
         details = []
-        if images:
-            details.append(f"{len(images)} image{'s' * (len(images) != 1)}")
+        if fetched:
+            details.append(f"{fetched} image{'s' * (fetched != 1)}")
         if missing:
             details.append(
                 f"image{'s' * (len(missing) != 1)} missing: " + ", ".join(missing)
@@ -314,38 +333,6 @@ class Puller:
             details.append("kept as HTML: " + ", ".join(dict.fromkeys(conversion.kept)))
         self._line(action, post.id, path, "; ".join(details))
         return True
-
-    def _fetch_images(
-        self, post: FetchedPost, path: PurePosixPath, conversion: Conversion | None
-    ) -> tuple[Conversion, list[tuple[Download, bytes]]] | None:
-        """Download the images a conversion uses before anything is written.
-
-        An image whose file is gone stays in the post as its original source,
-        so the post is converted again without a local copy of it.
-        """
-        contents: dict[str, bytes] = {}
-        while conversion is not None:
-            used = image_sources(conversion.markdown)
-            downloads = []
-            for download in self.library.take_pending():
-                if str(download.path) in used:
-                    downloads.append(download)
-                else:
-                    self.library.release(download)
-            absent = []
-            for download in downloads:
-                try:
-                    if download.url not in contents:
-                        contents[download.url] = self.remote.download(download.url)
-                except MissingImage:
-                    absent.append(download.url)
-            if not absent:
-                return conversion, [(d, contents[d.url]) for d in downloads]
-            for download in downloads:
-                self.library.release(download)
-            self.library.missing.extend(absent)
-            conversion = self._convert(post, path)
-        return None
 
     def _convert(self, post: FetchedPost, path: PurePosixPath) -> Conversion | None:
         try:

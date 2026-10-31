@@ -167,10 +167,10 @@ def two_image_blog():
 
 
 @pytest.mark.parametrize("response", [404, 200], ids=["not-found", "web-page"])
-def test_a_missing_image_is_reported_and_stays_in_the_post_as_its_source(
+def test_a_missing_image_is_reported_and_the_post_still_converts(
     tmp_path, store, response
 ):
-    wordpress, gone, block = two_image_blog()
+    wordpress, gone, _ = two_image_blog()
     wordpress.broken_uploads["/wp-content/uploads/2026/01/gone-1024x768.jpg"] = response
     add_profile(store, "myblog", tmp_path)
 
@@ -178,14 +178,14 @@ def test_a_missing_image_is_reported_and_stays_in_the_post_as_its_source(
 
     assert (status, errors) == (0, "")
     assert output.splitlines()[1:] == [
-        f"+  1  posts/post-1.md  1 image; image missing: {gone}; "
-        "kept as HTML: core/image",
+        f"+  1  posts/post-1.md  1 image; image missing: {gone}",
         "+  2  posts/post-2.md",
         "Pulled 2 posts (2 new), 1 image; 1 image missing.",
     ]
     body = (tmp_path / "posts/post-1.md").read_text()
-    assert "![Sunset](images/sunset-1024x768.jpg)" in body
-    assert block in body
+    assert (
+        "![Sunset](images/sunset-1024x768.jpg)\n\n![](images/gone-1024x768.jpg)" in body
+    )
     assert sorted(p.name for p in (tmp_path / "images").iterdir()) == [
         "sunset-1024x768.jpg"
     ]
@@ -194,8 +194,10 @@ def test_a_missing_image_is_reported_and_stays_in_the_post_as_its_source(
     assert output.startswith("No local changes.")
 
 
-def test_ls_flags_a_missing_image_until_a_pull_finds_it_again(tmp_path, store):
-    wordpress, gone, _ = two_image_blog()
+def test_a_missing_image_stays_flagged_until_a_pull_restores_it_under_your_edits(
+    tmp_path, store
+):
+    wordpress, _, _ = two_image_blog()
     path = "/wp-content/uploads/2026/01/gone-1024x768.jpg"
     wordpress.broken_uploads[path] = 404
     add_profile(store, "myblog", tmp_path)
@@ -206,18 +208,22 @@ def test_ls_flags_a_missing_image_until_a_pull_finds_it_again(tmp_path, store):
         return output.splitlines()[1].split()[-1]
 
     assert issues() == "b"
-
     _, output, _ = pull(store, wordpress)
     assert output == "Nothing to pull; 1 image missing.\n"
     assert issues() == "b"
 
+    post = tmp_path / "posts/post-1.md"
+    post.write_text(post.read_text() + "\nMy edit.\n")
+    edited = post.read_text()
     del wordpress.broken_uploads[path]
     _, output, _ = pull(store, wordpress)
+
     assert output.splitlines() == [
-        "~  1  posts/post-1.md  1 image",
-        "Pulled 1 post (1 updated), 1 image.",
+        "~  1  posts/post-1.md  1 image restored",
+        "Restored 1 image; 1 post with local changes.",
     ]
-    assert "![](images/gone-1024x768.jpg)" in (tmp_path / "posts/post-1.md").read_text()
+    assert post.read_text() == edited
+    assert (tmp_path / "images/gone-1024x768.jpg").exists()
     assert issues() == "-"
 
 

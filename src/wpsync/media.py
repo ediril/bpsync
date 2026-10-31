@@ -51,12 +51,8 @@ class MediaLibrary:
         self.by_path = {record.path: record for record in records}
         self.by_url = {record.url: record.path for record in records}
         self.pending: dict[PurePosixPath, Download] = {}
-        self.missing: list[str] = []
-        """The current post's images that have no file to download."""
 
     def remember(self, url: str, media_id: str, size: str) -> str:
-        if url in self.missing:
-            return url
         path = self.by_url.get(url)
         if path is None:
             path = self._free_path(url, media_id)
@@ -79,17 +75,15 @@ class MediaLibrary:
         self.pending.clear()
         return downloads
 
-    def take_missing(self) -> list[str]:
-        missing = self.missing
-        self.missing = []
-        return missing
-
     def release(self, download: Download) -> None:
         """Forget a planned download that the converted post does not use."""
         self.by_url.pop(download.url, None)
 
     def add(self, record: MediaRecord) -> None:
         self.by_path[record.path] = record
+
+    def at_url(self, url: str) -> MediaRecord:
+        return self.by_path[self.by_url[url]]
 
     def _free_path(self, url: str, media_id: str) -> PurePosixPath:
         name = unquote(PurePosixPath(urlsplit(url).path).name) or f"image-{media_id}"

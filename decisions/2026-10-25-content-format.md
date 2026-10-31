@@ -104,27 +104,32 @@ It also ignores markup authors use only to force vertical space: paragraphs
 without attributes that hold nothing but spaces, no-break spaces, and line
 breaks (`<p></p>`, `<p>&nbsp;</p>`, `<p><br></p>`), and line breaks at the start
 or end of a block. Two or more line breaks inside such a paragraph split it into
-two paragraphs. Some of these do show as blank lines, so this is the one place
+two paragraphs, and inside any other block, such as a list item, they become one
+line break, because a Markdown list item with two paragraphs would change every
+item in its list. Some of these do show as blank lines, so this is the one place
 pull knowingly changes a post's display: spacing is a workaround for WordPress's
 editor rather than content, and keeping it would fill the Markdown with HTML. A
 post keeps its spacing on the blog until it is edited and pushed.
 
-Embed blocks without custom classes or alignment become their bare URL. Images
+Embed blocks without custom classes or alignment become their bare URL; the
+aspect-ratio classes the editor adds by itself do not count as custom. Images
 from the site's media library are downloaded into `images/` and the Markdown
 references the local file; only images the final Markdown uses are downloaded.
 An image whose file is gone from the server (HTTP 404 or 410, or a response that
-is not an image) is reported and kept as its exact source with its WordPress URL, so a dead image never keeps a
-post out of sync and a push sends its original markup; any other download
-failure stops the pull, so a passing outage cannot change how a post is stored.
-The state database records the post's missing images, so `ls` can show them
-without contacting the blog, and each pull tries them again and converts an
-unedited post once they are back. Only images pull would download are checked:
-not those inside kept HTML, in a line of text, or on other sites.
+is not an image) still becomes a Markdown image with its local path and a media
+row, but no file: a missing file is no reason to keep a block as HTML, and the
+row lets push send the image's original library markup. Pull reports it, the
+state database records it so `ls` can show it without contacting the blog, and
+each pull tries it again, adding the file when it is back without touching the
+Markdown. Any other download failure stops the pull, so a passing outage cannot
+change how a post is stored. Only images pull would download are checked: not
+those inside kept HTML, in a line of text, or on other sites.
 A classic-editor image (`<p><img class="wp-image-N size-X">`) and a block-editor
 image figure are read as the same image, with alignment allowed on either
 element, so a classic post's images become Markdown images and are pushed back
-in the block editor's image markup. Captions with their own attributes, and
-figures with classes other than alignment and size, are kept as source.
+in the block editor's image markup. An image given its own width keeps it as a
+Markdown attribute, and push restores the figure's `is-resized` class. Captions
+with their own attributes, and figures with other classes, are kept as source.
 
 ### Block-format posts
 

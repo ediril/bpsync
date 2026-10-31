@@ -38,9 +38,8 @@
   are linked, only after confirmation or `--yes`; pull never restores or
   deletes local files.
   An image whose file is gone from the server, or that comes back as something
-  other than an image, is reported, and the post is still pulled with that
-  image kept as its original HTML.
-  Later pulls try it again.
+  other than an image, is reported, and the post still converts. Later pulls
+  add the file if the server has it again.
 - `scripts/publish.sh [--prepare]` builds, checks, and publishes releases to
   PyPI.
 

@@ -133,10 +133,39 @@ def test_content_without_a_markdown_form_is_kept_as_its_exact_source():
         ("<p><br>One</p>", "One"),
         ("<p>One<br><br>Two</p>", "One\n\nTwo"),
         ("<ul>\n<li>One<br></li>\n</ul>", "- One"),
+        (
+            "<!-- wp:list -->\n<ul><li>One<br><br>Two</li></ul>\n<!-- /wp:list -->",
+            "- One\\\n  Two",
+        ),
     ],
 )
 def test_markup_used_only_for_vertical_space_is_dropped(raw, markdown):
     assert to_markdown(raw, MemoryMedia()) == Conversion(markdown, ())
+
+
+def test_a_resized_image_and_an_embed_with_aspect_classes_become_markdown():
+    url = "https://blog.test/wp-content/uploads/photo-823x1024.jpeg"
+    raw = (
+        '<!-- wp:image {"id":119,"width":"250px","sizeSlug":"large",'
+        '"align":"right"} -->\n'
+        '<figure class="wp-block-image alignright size-large is-resized">'
+        f'<img src="{url}" alt="" class="wp-image-119" style="width:250px"/></figure>\n'
+        "<!-- /wp:image -->\n\n"
+        '<!-- wp:embed {"url":"https://www.youtube.com/watch?v=abc","type":"video",'
+        '"providerNameSlug":"youtube","responsive":true,'
+        '"className":"wp-embed-aspect-16-9 wp-has-aspect-ratio"} -->\n'
+        '<figure class="wp-block-embed is-type-video is-provider-youtube '
+        'wp-block-embed-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio">'
+        '<div class="wp-block-embed__wrapper">\n'
+        "https://www.youtube.com/watch?v=abc\n</div></figure>\n<!-- /wp:embed -->"
+    )
+    media = MemoryMedia()
+
+    result = to_markdown(raw, media)
+
+    assert result.kept == ()
+    assert "https://www.youtube.com/watch?v=abc" in result.markdown.splitlines()
+    assert "is-resized" in render_html(result.markdown, media)
 
 
 @pytest.mark.parametrize("raw", ['<p class="gap"></p>', '<p id="top">&nbsp;</p>'])

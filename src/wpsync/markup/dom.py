@@ -172,10 +172,13 @@ def trim_block_whitespace(
                 node.children, block_context=is_block(node)
             )
             if is_block(node):
-                children = _trim_breaks(children)
-            if node.tag == "p" and not node.attrs:
-                result.extend(Element("p", {}, part) for part in _paragraphs(children))
-                continue
+                parts = _split_at_blank_lines(_trim_breaks(children))
+                if node.tag == "p" and not node.attrs:
+                    result.extend(Element("p", {}, part) for part in parts)
+                    continue
+                children = parts[0]
+                for part in parts[1:]:
+                    children = [*children, Element("br"), *part]
             node = Element(node.tag, node.attrs, children)
         result.append(node)
     result = _strip_after_breaks(result, block_context, leading=True)
@@ -224,8 +227,8 @@ def _trim_breaks(children: list[Node]) -> list[Node]:
     return children[start:end]
 
 
-def _paragraphs(children: list[Node]) -> list[list[Node]]:
-    """Split a paragraph's content at blank lines made of repeated line breaks."""
+def _split_at_blank_lines(children: list[Node]) -> list[list[Node]]:
+    """Split a block's content at blank lines made of repeated line breaks."""
     parts: list[list[Node]] = [[]]
     filler: list[Node] = []
     for child in children:

@@ -62,7 +62,7 @@ class MediaRecord:
     path: PurePosixPath
     """Relative to the profile's local root."""
     checksum: str
-    """Of the file as downloaded or uploaded."""
+    """Of the file as downloaded or uploaded; empty while the file is missing."""
     media_id: str
     url: str
     size: str
