@@ -22,9 +22,9 @@ from wpsync.config import (
     validate_profile_name,
 )
 from wpsync.documents import DocumentError, LocalDocument, scan_documents
-from wpsync.posts import PostSummary, RemoteState
+from wpsync.posts import PostStatus, PostSummary, RemoteState
 from wpsync.pull import Puller
-from wpsync.state import PostRecord, StateError, read_media, read_records
+from wpsync.state import StateError, read_media, read_records
 from wpsync.sync import Action, DiffEntry, SelectionError, compare, select
 from wpsync.wordpress.client import WordPressClient, WordPressError, discover_api_root
 from wpsync.wordpress.remote import WordPressRemote
@@ -61,6 +61,10 @@ LEGEND = (
     ("?  ", "conflict or ambiguous match; push stops and asks"),
     ("=  ", "unchanged (shown with -a)"),
     ("x l", "private; push never sends it (shown with -a)"),
+)
+LS_LEGEND = (
+    ("p", "Attr: public; push publishes it (- means private)"),
+    ("b", "Issues: broken images, as of the last pull"),
 )
 
 
@@ -164,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-v", "--version", action="version", version=__version__)
     parser.add_argument(
-        "--legend", action="store_true", help="show diff symbols and exit"
+        "--legend", action="store_true", help="show diff and ls symbols and exit"
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -468,6 +472,8 @@ def _legend(session: _Session) -> str:
     color = _use_color(session.stdout, session.environ)
     lines = ["Diff legend:"]
     lines.extend(f"  {_paint(marker, color)}  {meaning}" for marker, meaning in LEGEND)
+    lines.append("ls legend:")
+    lines.extend(f"  {marker}  {meaning}" for marker, meaning in LS_LEGEND)
     return "\n".join(lines)
 
 
@@ -519,30 +525,29 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
         return (post_id is None, int(post_id) if post_id else 0, str(item.path))
 
     records = read_records(profile.local_root, profile.api_root)
-
-    def broken(record: PostRecord | None) -> str:
-        count = len(record.missing_images) if record else 0
-        return f"  {count} broken image{'s' * (count != 1)}" if count else ""
-
-    rows = [("ID", "Slug", "Title", "URL", "File", "")]
+    rows = [("ID", "Attr", "Slug", "Title", "File", "URL", "Issues")]
     for item in sorted(documents, key=order):
+        post = item.document.post
         post_id = item.document.post_id
         record = records.get(post_id) if post_id else None
         rows.append(
             (
                 post_id or "-",
-                item.document.post.slug or "-",
-                item.document.post.title or "(no title)",
-                record.url if record else "-",
+                "p" if post.status is PostStatus.PUBLIC else "-",
+                post.slug or "-",
+                post.title or "(no title)",
                 str(item.path),
-                broken(record),
+                record.url if record else "-",
+                "b" if record and record.missing_images else "-",
             )
         )
-    widths = [max(len(row[i]) for row in rows) for i in range(4)]
+    widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
     return "\n".join(
-        f"{post_id:>{widths[0]}}  {slug:<{widths[1]}}  {title:<{widths[2]}}  "
-        f"{url:<{widths[3]}}  {path}{note}"
-        for post_id, slug, title, url, path, note in rows
+        "  ".join(
+            cell.rjust(width) if index == 0 else cell.ljust(width)
+            for index, (cell, width) in enumerate(zip(row, widths, strict=True))
+        ).rstrip()
+        for row in rows
     )
 
 

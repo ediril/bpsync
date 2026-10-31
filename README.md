@@ -193,18 +193,20 @@ rather than on their own, keep their WordPress address and are not downloaded.
 ## Seeing what changed
 
 Local files are the source of truth. `ls` lists the posts in the profile folder
-with their IDs, slugs, and addresses on the blog as of the last pull, and any
-broken images that pull found, without contacting the blog:
+without contacting the blog, with their addresses on the blog as of the last
+pull:
 
 ```console
 $ wpsync ls
-ID  Slug  Title  URL                      File
-67  hurt  Hurt   https://blog.test/hurt/  posts/hurt.md  1 broken image
- -  -     Idea   -                        posts/idea.md
+ID  Attr  Slug  Title  File           URL                      Issues
+67  p     hurt  Hurt   posts/hurt.md  https://blog.test/hurt/  b
+ -  -     -     Idea   posts/idea.md  -                        -
 ```
 
-Pull checks the images it downloads, and tries missing ones again each time. It
-does not check images inside kept HTML, in a line of text, or on other sites.
+`Attr` shows `p` for a public post. `Issues` shows `b` for a post with broken
+images. Pull checks the images it downloads, and tries missing ones again each
+time. It does not check images inside kept HTML, in a line of text, or on other
+sites.
 
 `diff` shows what a push would change and anything that would stop it:
 
@@ -214,7 +216,7 @@ wpsync diff 123      # one post, by ID
 wpsync diff hello    # one post, by slug
 wpsync diff posts/new-idea.md   # one post, by file
 wpsync diff -a       # also list unchanged posts
-wpsync --legend      # explain the status symbols
+wpsync --legend      # explain the diff and ls symbols
 ```
 
 ```text
