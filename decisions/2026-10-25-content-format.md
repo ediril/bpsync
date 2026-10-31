@@ -97,8 +97,9 @@ formatting elements, spaces at the edges of plain bold or italic text, one
 trailing newline in `<pre>`, comments' whitespace, a paragraph holding only a
 comment (WordPress wraps `<!--more-->` that way), and a fixed list of
 bookkeeping classes the block editor adds to unstyled elements (such as
-`wp-block-heading` and `wp-block-list`). Inline styles that set `white-space`
-or `display` make whitespace significant.
+`wp-block-heading` and `wp-block-list`), and the `data-type` and `data-id`
+attributes it adds to links. Inline styles that set `white-space` or `display`
+make whitespace significant.
 
 It also ignores markup authors use only to force vertical space: paragraphs
 without attributes that hold nothing but spaces, no-break spaces, and line
@@ -118,12 +119,16 @@ references the local file; only images the final Markdown uses are downloaded.
 An image whose file is gone from the server (HTTP 404 or 410, or a response that
 is not an image) still becomes a Markdown image with its local path and a media
 row, but no file: a missing file is no reason to keep a block as HTML, and the
-row lets push send the image's original library markup. Pull reports it, the
-state database records it so `ls` can show it without contacting the blog, and
-each pull tries it again, adding the file when it is back without touching the
-Markdown. Any other download failure stops the pull, so a passing outage cannot
-change how a post is stored. Only images pull would download are checked: not
-those inside kept HTML, in a line of text, or on other sites.
+row lets push send the image's original library markup. Iframes showing files
+under `wp-content/uploads` stay as source, since Markdown cannot express them,
+but their files are checked the same way. Pull reports missing files, the state
+database records them so `ls` and `show` can report them without contacting the
+blog, and each pull tries them again, adding an image's file when it is back
+without touching the Markdown. Any other download failure stops the pull, so a
+passing outage cannot change how a post is stored. Only those files are checked:
+not images inside kept HTML, in a line of text, or on other sites, and not linked
+uploads. A file that disappears after a post was pulled is noticed only when the
+post next changes.
 A classic-editor image (`<p><img class="wp-image-N size-X">`) and a block-editor
 image figure are read as the same image, with alignment allowed on either
 element, so a classic post's images become Markdown images and are pushed back

@@ -149,7 +149,7 @@ are an error.
 displays is downloaded, usually WordPress's resized `large` copy.
 
 If an image's file is gone from the server, or the server answers with something
-other than an image, pull names it on the post's line and carries on. The
+other than an image, pull lists it as `missing:` on the post's line and carries on. The
 Markdown refers to `images/<name>` as usual, and later pulls add the file if the
 server has it again. Any other download failure, such as a server error, stops
 the pull; rerun it to continue.
@@ -199,14 +199,34 @@ pull:
 ```console
 $ wpsync ls
 ID  Attr  Slug  Title  File           URL                      Issues
-67  p     hurt  Hurt   posts/hurt.md  https://blog.test/hurt/  b
+67  p     hurt  Hurt   posts/hurt.md  https://blog.test/hurt/  2
  -  -     -     Idea   posts/idea.md  -                        -
 ```
 
-`Attr` shows `p` for a public post. `Issues` shows `b` for a post with broken
-images. Pull checks the images it downloads, and tries missing ones again each
-time. It does not check images inside kept HTML, in a line of text, or on other
-sites.
+`Attr` shows `p` for a public post. `Issues` counts what is wrong with a post;
+`show` says what, for one post chosen by ID, slug, file, or title:
+
+```console
+$ wpsync show hurt
+ID:         67
+Title:      Hurt
+Slug:       hurt
+Status:     public
+Date:       2025-11-04T10:00:00-05:00
+Categories: Notes
+Tags:       -
+File:       posts/hurt.md
+URL:        https://blog.test/hurt/
+Issues:     2
+  missing file: https://blog.test/wp-content/uploads/2025/11/photo.png
+  missing file: https://blog.test/wp-content/uploads/2025/11/discussion.html
+```
+
+An issue is an image or embedded page that a pull found missing from the server.
+Pull tries missing files again each time. It checks the images it downloads and
+iframes showing uploaded files, when it pulls a post. It does not check images
+inside kept HTML, in a line of text, or on other sites, or uploads a post only
+links to.
 
 `diff` shows what a push would change and anything that would stop it:
 
@@ -214,6 +234,7 @@ sites.
 wpsync diff          # every post
 wpsync diff 123      # one post, by ID
 wpsync diff hello    # one post, by slug
+wpsync diff "Hello World"   # one post, by title
 wpsync diff posts/new-idea.md   # one post, by file
 wpsync diff -a       # also list unchanged posts
 wpsync --legend      # explain the diff and ls symbols

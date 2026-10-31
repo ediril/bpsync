@@ -34,6 +34,8 @@ class PullRemote(Protocol):
 
     def download(self, url: str) -> bytes: ...
 
+    def available(self, url: str) -> bool: ...
+
 
 @dataclass(frozen=True)
 class _LocalCandidate:
@@ -51,7 +53,7 @@ class PullResult:
     updated: int = 0
     linked: int = 0
     images: int = 0
-    missing_images: int = 0
+    missing_files: int = 0
     skipped: int = 0
     changes_kept: int = 0
 
@@ -64,9 +66,9 @@ class PullResult:
             if self.changes_kept:
                 kept = self.changes_kept
                 notes.append(f"{kept} post{'s' * (kept != 1)} with local changes")
-            if self.missing_images:
-                missing = self.missing_images
-                notes.append(f"{missing} image{'s' * (missing != 1)} missing")
+            if self.missing_files:
+                missing = self.missing_files
+                notes.append(f"{missing} file{'s' * (missing != 1)} missing")
             return "; ".join(notes) + "."
         parts = [
             f"{count} {label}"
@@ -81,9 +83,9 @@ class PullResult:
         line += f" ({', '.join(parts)})" if parts else ""
         if self.images:
             line += f", {self.images} image{'s' * (self.images != 1)}"
-        if self.missing_images:
-            missing = self.missing_images
-            line += f"; {missing} image{'s' * (missing != 1)} missing"
+        if self.missing_files:
+            missing = self.missing_files
+            line += f"; {missing} file{'s' * (missing != 1)} missing"
         if self.skipped:
             line += f"; {self.skipped} skipped"
         if self.changes_kept:
@@ -183,22 +185,22 @@ class Puller:
             self.result.updated += 1
 
     def _refresh(self, post: FetchedPost, record: PostRecord) -> None:
-        """Bring an unchanged post's address and missing images up to date."""
-        missing = tuple(
-            url for url in record.missing_images if not self._restore_image(url)
-        )
-        found = len(record.missing_images) - len(missing)
+        """Bring an unchanged post's address and missing files up to date."""
+        missing = tuple(url for url in record.missing_files if not self._is_back(url))
+        found = len(record.missing_files) - len(missing)
         if found:
-            detail = f"{found} image{'s' * (found != 1)} restored"
+            detail = f"{found} missing file{'s' * (found != 1)} back"
             self._line(Action.CHANGED, post.id, record.path, detail)
-        self.result.missing_images += len(missing)
-        current = replace(record, url=post.url, missing_images=missing)
+        self.result.missing_files += len(missing)
+        current = replace(record, url=post.url, missing_files=missing)
         if current != record:
             with write_state(self.root, self.api_root) as state:
                 state.save(current)
 
-    def _restore_image(self, url: str) -> bool:
-        """Download an image that was missing, if the server has it again."""
+    def _is_back(self, url: str) -> bool:
+        """Whether a missing file is on the server again, saving it if an image."""
+        if url not in self.library.by_url:
+            return self.remote.available(url)
         image = self.library.at_url(url)
         if image.checksum:
             return True
@@ -296,6 +298,9 @@ class Puller:
                 files.append((download, self.remote.download(download.url)))
             except MissingImage:
                 files.append((download, None))
+        pages_gone = [
+            url for url in conversion.embedded_pages if not self.remote.available(url)
+        ]
         images = []
         for download, data in files:
             checksum = ""
@@ -311,7 +316,7 @@ class Puller:
             self.library.by_path[path].url
             for path in map(PurePosixPath, sorted(used))
             if path in self.library.by_path and not self.library.by_path[path].checksum
-        ]
+        ] + pages_gone
         written = Document(
             post.id,
             replace(post.post, body=conversion.markdown.strip("\n")),
@@ -321,14 +326,12 @@ class Puller:
         self._record(post, path, written, images, missing)
         fetched = sum(data is not None for _, data in files)
         self.result.images += fetched
-        self.result.missing_images += len(missing)
+        self.result.missing_files += len(missing)
         details = []
         if fetched:
             details.append(f"{fetched} image{'s' * (fetched != 1)}")
         if missing:
-            details.append(
-                f"image{'s' * (len(missing) != 1)} missing: " + ", ".join(missing)
-            )
+            details.append("missing: " + ", ".join(missing))
         if conversion.kept:
             details.append("kept as HTML: " + ", ".join(dict.fromkeys(conversion.kept)))
         self._line(action, post.id, path, "; ".join(details))

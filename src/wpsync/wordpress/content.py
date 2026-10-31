@@ -52,6 +52,11 @@ EDITOR_CLASSES = frozenset(
 )
 """Classes the block editor adds to unstyled elements."""
 
+EDITOR_LINK_ATTRS = frozenset({"data-type", "data-id"})
+"""Attributes the editor adds to links for its own use; browsers ignore them."""
+
+UPLOADS_PATH = "/wp-content/uploads/"
+
 STATIC_BLOCKS = frozenset(
     "core/" + name
     for name in """paragraph heading list list-item quote code preformatted separator
@@ -480,9 +485,17 @@ def _canonical_media(nodes: list[Node]) -> list[Node]:
                 result.extend(content)
                 continue
         if isinstance(node, Element) and not _is_media_form(node):
-            node = Element(node.tag, node.attrs, _canonical_media(node.children))
+            node = Element(
+                node.tag, _displayed_attrs(node), _canonical_media(node.children)
+            )
         result.append(node)
     return result
+
+
+def _displayed_attrs(node: Element) -> dict[str, str]:
+    if node.tag != "a":
+        return node.attrs
+    return {k: v for k, v in node.attrs.items() if k not in EDITOR_LINK_ATTRS}
 
 
 def _is_media_form(node: Element) -> bool:
@@ -531,7 +544,8 @@ def to_markdown(raw: str, media: Media) -> Conversion:
     kept = tuple(
         unit.label for index, unit in enumerate(units) if index not in converted
     )
-    return Conversion(document(converted), kept)
+    pages = tuple(dict.fromkeys(_uploaded_pages(display(raw))))
+    return Conversion(document(converted), kept, pages)
 
 
 def _convert(unit: _Unit, converter: Converter, media: Media) -> str | None:
@@ -573,5 +587,16 @@ def _for_conversion(node: Node, media: Media) -> Node:
             attrs["class"] = " ".join(classes)
         return Element("p", {}, [Element("img", attrs)])
     return Element(
-        node.tag, node.attrs, [_for_conversion(c, media) for c in node.children]
+        node.tag,
+        _displayed_attrs(node),
+        [_for_conversion(c, media) for c in node.children],
     )
+
+
+def _uploaded_pages(nodes: list[Node]) -> Iterator[str]:
+    """The sources of iframes showing files uploaded to a WordPress site."""
+    for node in nodes:
+        if isinstance(node, Element):
+            if node.tag == "iframe" and UPLOADS_PATH in node.attrs.get("src", ""):
+                yield node.attrs["src"]
+            yield from _uploaded_pages(node.children)

@@ -69,6 +69,14 @@ class WordPressRemote:
             raise MissingImage(url)
         return response.content
 
+    def available(self, url: str) -> bool:
+        response = request(self.downloads, "GET", url)
+        if response.status_code in (404, 410):
+            return False
+        if response.is_error:
+            raise WordPressError(f"could not check {url} (HTTP {response.status_code})")
+        return True
+
     def _fetched(self, post: dict[str, Any]) -> FetchedPost:
         if self._timezone is None:
             self._timezone = self.client.site_timezone()

@@ -143,7 +143,7 @@ def test_one_post_is_selected_by_id_slug_or_path(tmp_path, store, monkeypatch):
 
     status, _, errors = invoke(["diff", "post-9"], store, wordpress=wordpress)
     assert status == 1
-    assert "no local post has slug 'post-9'" in errors
+    assert "no local post has slug or title 'post-9'" in errors
 
 
 def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store):
@@ -165,6 +165,21 @@ def test_ls_lists_local_posts_without_contacting_the_blog(tmp_path, store):
         "12  p     post-12  Post 12  posts/twelve.md  https://blog.test/post-12/  -",
         " -  p     -        Idea     posts/idea.md    -                           -",
     ]
+    assert wordpress.requests == []
+
+
+def test_show_finds_a_post_by_id_slug_file_or_title(tmp_path, store):
+    wordpress = FakeWordPress(post_count=3)
+    add_profile(store, "myblog", tmp_path)
+    synced(tmp_path, wordpress, 3, "three.md")
+
+    for selector in ("3", "post-3", "posts/three.md", "post 3"):
+        status, output, errors = invoke(
+            ["myblog", "show", selector], store, wordpress=wordpress, password=None
+        )
+        assert (status, errors) == (0, "")
+        assert output.splitlines()[0] == "ID:         3"
+    assert "URL:        https://blog.test/post-3/" in output.splitlines()
     assert wordpress.requests == []
 
 

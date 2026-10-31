@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from wpsync.posts import ContentFormat
 
 STATE_PATH = Path(".wpsync") / "state.db"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCHEMA = """
 CREATE TABLE site (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -26,7 +26,7 @@ CREATE TABLE posts (
     remote_fingerprint TEXT NOT NULL,
     remote_format TEXT NOT NULL CHECK (remote_format IN ('blocks', 'html')),
     url TEXT NOT NULL,
-    missing_images TEXT NOT NULL
+    missing_files TEXT NOT NULL
 );
 CREATE TABLE media (
     path TEXT PRIMARY KEY,
@@ -53,8 +53,8 @@ class PostRecord:
     remote_format: ContentFormat
     url: str
     """Where the post is on the blog."""
-    missing_images: tuple[str, ...]
-    """Images the post shows whose files were gone at the last pull."""
+    missing_files: tuple[str, ...]
+    """Images and embedded pages whose files were gone at the last pull."""
 
 
 @dataclass(frozen=True)
@@ -105,7 +105,7 @@ def read_records(root: Path, api_root: str) -> dict[str, PostRecord]:
             return {}
         rows = connection.execute(
             "SELECT post_id, path, body_checksum, fields_checksum, "
-            "remote_fingerprint, remote_format, url, missing_images FROM posts"
+            "remote_fingerprint, remote_format, url, missing_files FROM posts"
         ).fetchall()
     return {
         row[0]: PostRecord(
@@ -149,7 +149,7 @@ class StateWriter:
                 record.remote_fingerprint,
                 record.remote_format.value,
                 record.url,
-                json.dumps(record.missing_images),
+                json.dumps(record.missing_files),
             ),
         )
 

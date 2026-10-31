@@ -37,11 +37,12 @@ COMMANDS = (
     "profile",
     "profiles",
     "ls",
+    "show",
     "diff",
     "pull",
 )
 PROFILE_AWARE_COMMANDS = frozenset(
-    {"map", "remove", "root", "profile", "ls", "diff", "pull"}
+    {"map", "remove", "root", "profile", "ls", "show", "diff", "pull"}
 )
 NO_POSTS = "No posts here yet. Run wpsync pull, or add Markdown files under posts/."
 RESET = "\033[0m"
@@ -62,10 +63,7 @@ LEGEND = (
     ("=  ", "unchanged (shown with -a)"),
     ("x l", "private; push never sends it (shown with -a)"),
 )
-LS_LEGEND = (
-    ("p", "Attr: public; push publishes it (- means private)"),
-    ("b", "Issues: broken images, as of the last pull"),
-)
+LS_LEGEND = (("p", "Attr: public; push publishes it (- means private)"),)
 
 
 class _Session:
@@ -253,10 +251,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser(
         "ls",
-        help="list local posts with their IDs and slugs",
+        help="list local posts and how many issues each has",
         usage="wpsync ls\n       wpsync PROFILE ls",
         description="List the post files in this profile without contacting the blog.",
     )
+
+    show = subparsers.add_parser(
+        "show",
+        help="show one post's details and issues",
+        usage="wpsync show POST\n       wpsync PROFILE show POST",
+        description=(
+            "Show a post's details and what is wrong with it, without contacting "
+            "the blog. POST is a post ID, slug, title, or file."
+        ),
+    )
+    show.add_argument("post", metavar="POST", help="the post")
 
     diff = subparsers.add_parser(
         "diff",
@@ -264,7 +273,8 @@ def build_parser() -> argparse.ArgumentParser:
         usage="wpsync diff [POST] [-a]\n       wpsync PROFILE diff [POST] [-a]",
         description=(
             "Show local changes and anything that would stop a push. Contacts the "
-            "blog only for changed or new posts. POST is a post ID, slug, or file."
+            "blog only for changed or new posts. POST is a post ID, slug, title, or "
+            "file."
         ),
     )
     diff.add_argument(
@@ -538,7 +548,9 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
                 post.title or "(no title)",
                 str(item.path),
                 record.url if record else "-",
-                "b" if record and record.missing_images else "-",
+                str(len(record.missing_files))
+                if record and record.missing_files
+                else "-",
             )
         )
     widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
@@ -549,6 +561,37 @@ def _ls(arguments: argparse.Namespace, session: _Session) -> str:
         ).rstrip()
         for row in rows
     )
+
+
+def _show(arguments: argparse.Namespace, session: _Session) -> str:
+    profile, base = _profile_root(arguments, session)
+    root = profile.local_root
+    records = read_records(root, profile.api_root)
+    selection = select(
+        arguments.post, scan_documents(root), records, root=root, base=base
+    )
+    if not selection.documents:
+        raise SelectionError(f"post {arguments.post} has no local file")
+    item = selection.documents[0]
+    post = item.document.post
+    post_id = item.document.post_id
+    record = records.get(post_id) if post_id else None
+    missing = record.missing_files if record else ()
+    fields = (
+        ("ID", post_id or "-"),
+        ("Title", post.title or "(no title)"),
+        ("Slug", post.slug or "-"),
+        ("Status", post.status.value),
+        ("Date", post.date.isoformat() if post.date else "-"),
+        ("Categories", ", ".join(post.categories) or "-"),
+        ("Tags", ", ".join(post.tags) or "-"),
+        ("File", str(item.path)),
+        ("URL", record.url if record else "-"),
+        ("Issues", str(len(missing)) if missing else "-"),
+    )
+    lines = [f"{name + ':':<12}{value}" for name, value in fields]
+    lines.extend(f"  missing file: {url}" for url in missing)
+    return "\n".join(lines)
 
 
 def _diff(arguments: argparse.Namespace, session: _Session) -> str:
@@ -674,6 +717,7 @@ HANDLERS = {
     "profile": _profile,
     "profiles": _profiles,
     "ls": _ls,
+    "show": _show,
     "diff": _diff,
     "pull": _pull,
 }

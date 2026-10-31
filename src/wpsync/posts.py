@@ -70,6 +70,8 @@ class Conversion:
     markdown: str
     kept: tuple[str, ...]
     """Descriptions of elements kept as the platform's markup."""
+    embedded_pages: tuple[str, ...] = ()
+    """Pages the post embeds from the platform's own uploaded files."""
 
 
 class UnrepresentableContent(ValueError):

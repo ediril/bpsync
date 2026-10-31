@@ -143,6 +143,16 @@ def test_markup_used_only_for_vertical_space_is_dropped(raw, markdown):
     assert to_markdown(raw, MemoryMedia()) == Conversion(markdown, ())
 
 
+def test_a_link_loses_only_the_attributes_the_editor_adds_for_itself():
+    raw = (
+        '<p><a href="https://x.test/" data-type="link" data-id="https://x.test/"'
+        ' target="_blank">X</a></p>'
+    )
+    assert to_markdown(raw, MemoryMedia()) == Conversion(
+        "[X](https://x.test/){target=_blank}", ()
+    )
+
+
 def test_a_resized_image_and_an_embed_with_aspect_classes_become_markdown():
     url = "https://blog.test/wp-content/uploads/photo-823x1024.jpeg"
     raw = (

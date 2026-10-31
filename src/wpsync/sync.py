@@ -46,7 +46,7 @@ def select(
     root: Path,
     base: Path,
 ) -> Selection:
-    """Narrow to one post chosen by post ID, file path, or slug."""
+    """Narrow to one post chosen by post ID, file path, slug, or title."""
     if selector is None:
         return Selection(documents, records)
     if selector.isdigit():
@@ -67,10 +67,17 @@ def select(
     else:
         chosen = [item for item in documents if item.document.post.slug == selector]
         if not chosen:
-            raise SelectionError(f"no local post has slug '{selector}'")
+            title = selector.casefold()
+            chosen = [
+                item
+                for item in documents
+                if item.document.post.title.casefold() == title
+            ]
+        if not chosen:
+            raise SelectionError(f"no local post has slug or title '{selector}'")
         if len(chosen) > 1:
             paths = ", ".join(str(item.path) for item in chosen)
-            raise SelectionError(f"slug '{selector}' is used by {paths}")
+            raise SelectionError(f"'{selector}' matches {paths}")
     post_id = chosen[0].document.post_id
     record = {post_id: records[post_id]} if post_id in records else {}
     return Selection(chosen, record)
