@@ -32,7 +32,7 @@ from wpsync.wordpress.client import WordPressClient, WordPressError, discover_ap
 from wpsync.wordpress.remote import WordPressRemote
 
 COMMANDS = (
-    "create",
+    "init",
     "map",
     "remove",
     "root",
@@ -172,29 +172,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    create = subparsers.add_parser(
-        "create",
+    init = subparsers.add_parser(
+        "init",
         help="create a profile that maps a local folder to a blog",
         description=(
             "Create a profile for a WordPress site without signing in. Without "
             "--local-root, offer the current directory. Pull next."
         ),
     )
-    create.add_argument("profile_name", metavar="PROFILE", help="new profile name")
-    create.add_argument(
+    init.add_argument("profile_name", metavar="PROFILE", help="new profile name")
+    init.add_argument(
         "--site", required=True, help="blog address, such as https://example.com"
     )
-    create.add_argument(
+    init.add_argument(
         "-u", "--username", help="WordPress username; prompted when omitted"
     )
-    create.add_argument(
+    init.add_argument(
         "--password-env",
         metavar="NAME",
         help="password environment variable (default: PROFILE_WP_PASSWORD)",
     )
-    create.add_argument(
-        "--local-root", metavar="PATH", help="local folder for this blog"
-    )
+    init.add_argument("--local-root", metavar="PATH", help="local folder for this blog")
 
     map_parser = subparsers.add_parser(
         "map",
@@ -371,7 +369,7 @@ def _sign_in(client: WordPressClient, profile: Profile) -> list[str]:
     return lines
 
 
-def _create(arguments: argparse.Namespace, session: _Session) -> str:
+def _init(arguments: argparse.Namespace, session: _Session) -> str:
     name = validate_profile_name(arguments.profile_name)
     configuration = session.store.load()
     if name in configuration.profiles:
@@ -747,7 +745,7 @@ def _pull(arguments: argparse.Namespace, session: _Session) -> str:
 
 
 HANDLERS = {
-    "create": _create,
+    "init": _init,
     "map": _map,
     "remove": _remove,
     "root": _root,

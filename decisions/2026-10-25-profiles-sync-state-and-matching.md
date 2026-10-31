@@ -10,7 +10,7 @@ A profile maps one local folder to one blog, following HLSync's profile model.
 Profiles live in `~/.wpsync/config.json` and hold the site URL, the discovered
 REST API root, the username, the password environment-variable name, and one
 canonical local root. Local roots may not equal, contain, or be contained by
-another profile's root. `wpsync create NAME --site URL` creates a profile and
+another profile's root. `wpsync init NAME --site URL` creates a profile and
 proposes the current directory as its root. Commands run inside a mapped root
 use that profile; elsewhere the profile is named before the command
 (`wpsync myblog pull`). No profile selection persists between commands.
@@ -20,11 +20,11 @@ variable. The variable name defaults to one derived from the profile name, such
 as `MYBLOG_WP_PASSWORD`, and can be overridden when the profile is created.
 Credential values are never stored.
 
-`create` only checks that the site advertises a WordPress REST API and saves
+`init` only checks that the site advertises a WordPress REST API and saves
 the profile; it needs no credentials. `pull` signs in and checks that the
 account can edit posts. Until something has been pulled, it also reports
 limits that would make a pull look incomplete, such as an account that can edit
-only its own posts. No setup step separates `create` from the first `pull` or
+only its own posts. No setup step separates `init` from the first `pull` or
 `push`: the first command that synchronizes a post creates the sync state, and
 push matching (below) keeps a push without a prior pull safe.
 
@@ -129,7 +129,7 @@ would otherwise ask.
 ## Intentionally excluded
 
 - Storing credentials or using the OS keychain for the MVP.
-- Contacting the blog with credentials during `create`.
+- Contacting the blog with credentials during `init`.
 - Detecting WordPress-side changes to posts that are unchanged locally,
   except through `pull`.
 - Selecting several posts in one command; a command acts on one post or all.

@@ -25,6 +25,8 @@
 - WPSync shares UX philosophy and CLI conventions (profiles, current-directory
   inference, environment-variable credentials) with HLSync (`../hlsync`) but
   no code or dependencies. Check HLSync's README before designing a command.
+  One deliberate difference: `init` creates a profile where HLSync uses
+  `create`, because the user has other plans for `wpsync create`.
 - Python 3.11+, packaged with uv; tests run with `uv run pytest`.
 - WPSync is licensed under PolyForm Strict 1.0.0 (noncommercial use only; no
   modification or redistribution; paid commercial licenses). Dependencies must

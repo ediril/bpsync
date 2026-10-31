@@ -35,12 +35,12 @@ A profile maps one local folder to one blog. Profiles are stored in
 From the folder you want to use for the blog:
 
 ```console
-wpsync create myblog --site https://example.com --username emrah
+wpsync init myblog --site https://example.com --username emrah
 export MYBLOG_WP_PASSWORD='abcd efgh ijkl mnop qrst uvwx'
 wpsync pull
 ```
 
-`create` checks that the address is a WordPress site and saves the profile
+`init` checks that the address is a WordPress site and saves the profile
 without signing in. It offers the current directory as the profile's folder;
 press Enter to accept it, or decline to name another. Use `--local-root PATH`
 to name it directly, and omit `-u`/`--username` to be prompted. The username is

@@ -4,11 +4,11 @@
 
 ### Added
 
-- Profiles map one local folder to one blog, following HLSync: `create`,
+- Profiles map one local folder to one blog, following HLSync: `init`,
   `map`, `remove`, `root`, `profile`, and `profiles`, stored in
   `~/.wpsync/config.json`, with current-directory inference, a profile-prefix
   override, and an Application Password read from an environment variable.
-  `create` checks that the address is a WordPress site without signing in.
+  `init` checks that the address is a WordPress site without signing in.
 - Read and write post files: Markdown under `posts/` with a YAML header.
   WPSync rewrites its own fields canonically, keeps other header entries and
   their comments byte for byte, and reports every invalid file and every post

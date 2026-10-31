@@ -9,7 +9,7 @@
   that became private into a draft. Add `diff -p POST` to show the text difference push
   would make, comparing the file with the current post converted to Markdown.
 - [ ] Remote deletion command that moves a post to the WordPress trash.
-- [ ] Characterize against the user's real blogs: `create` and first-pull
+- [ ] Characterize against the user's real blogs: `init` and first-pull
   sign-in, read-only pull and diff first, then push to a blog the user
   designates. Confirm `wpautop` handling, oEmbed URLs, and the
   HTML filter for users without `unfiltered_html`.

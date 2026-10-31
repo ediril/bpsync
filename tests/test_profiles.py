@@ -4,14 +4,14 @@ import pytest
 from wordpress_fake import PASSWORD, SITE, FakeWordPress, add_profile, invoke
 
 
-def test_create_saves_a_profile_without_signing_in(tmp_path, store, monkeypatch):
+def test_init_saves_a_profile_without_signing_in(tmp_path, store, monkeypatch):
     blog = tmp_path / "blog"
     blog.mkdir()
     monkeypatch.chdir(blog)
     wordpress = FakeWordPress()
 
     status, output, errors = invoke(
-        ["create", "myblog", "--site", "blog.test"],
+        ["init", "myblog", "--site", "blog.test"],
         store,
         stdin="emrah\n\n",
         wordpress=wordpress,
@@ -35,9 +35,9 @@ def test_create_saves_a_profile_without_signing_in(tmp_path, store, monkeypatch)
     assert [r.headers.get("Authorization") for r in wordpress.requests] == [None]
 
 
-def test_create_refuses_a_site_that_is_not_wordpress(tmp_path, store):
+def test_init_refuses_a_site_that_is_not_wordpress(tmp_path, store):
     status, _, errors = invoke(
-        ["create", "myblog", "--site", SITE, "--local-root", str(tmp_path)],
+        ["init", "myblog", "--site", SITE, "--local-root", str(tmp_path)],
         store,
         wordpress=FakeWordPress(advertises_api=False),
     )
@@ -49,14 +49,14 @@ def test_create_refuses_a_site_that_is_not_wordpress(tmp_path, store):
     assert not store.path.exists()
 
 
-def test_create_rejects_a_folder_inside_another_profile(tmp_path, store):
+def test_init_rejects_a_folder_inside_another_profile(tmp_path, store):
     add_profile(store, "first", tmp_path)
     nested = tmp_path / "nested"
     nested.mkdir()
 
     status, _, errors = invoke(
         [
-            "create",
+            "init",
             "myblog",
             "--site",
             SITE,
@@ -104,7 +104,7 @@ def test_map_moves_the_local_folder_only_after_confirmation(tmp_path, store):
 def test_first_pull_signs_in_through_a_rest_route_api_root(tmp_path, store):
     wordpress = FakeWordPress(post_count=120, rest_route=True, can_edit_others=False)
     profile = ["--username", "emrah", "--local-root", str(tmp_path)]
-    invoke(["create", "myblog", "--site", SITE, *profile], store, wordpress=wordpress)
+    invoke(["init", "myblog", "--site", SITE, *profile], store, wordpress=wordpress)
 
     status, output, errors = invoke(["myblog", "pull"], store, wordpress=wordpress)
 
